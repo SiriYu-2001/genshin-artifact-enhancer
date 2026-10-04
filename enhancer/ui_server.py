@@ -66,6 +66,7 @@ class Backend:
         self.token=secrets.token_urlsafe(32);self.lock=threading.Lock();self.job=None;self.process=None
         self.snapshots={};self.jobs={};self._catalog_cache=None;self._catalog_time=0
         self.cleanup_previews={}
+        self.import_previews={}
         previous=sorted((self.directory/'jobs').glob('*/job.json'),key=lambda p:p.stat().st_mtime,reverse=True)
         if previous:
             job=read(previous[0])
@@ -101,6 +102,42 @@ class Backend:
         result.pop('files');result.pop('fingerprint')
         return {**result,'directory':str(self.runtime.resolve()),'configs':self.store.configurations(),
                 'trash':self.store.trash(),'history_limit':20}
+
+    def import_inventory(self,payload):
+        from .import_inventory import parse_document,commit_import
+        with self.lock:
+            if self.process and self.process.poll() is None:raise ValueError('任务运行中不能导入库存，请先停止或等待完成')
+            self.import_previews={k:v for k,v in self.import_previews.items() if time.time()-v[0]<600}
+            action=payload.get('action')
+            if action=='preview':
+                rows,summary=parse_document(payload.get('content'))
+                token=secrets.token_hex(16)
+                if len(self.import_previews)>=3:self.import_previews.pop(next(iter(self.import_previews)))
+                self.import_previews[token]=(time.time(),rows,summary,str(payload.get('filename','')))
+                return {'preview':token,**summary}
+            if action=='commit':
+                stored=self.import_previews.pop(payload.get('preview',''),None)
+                if not stored:raise ValueError('导入预览已过期，请重新选择文件')
+                _,rows,summary,label=stored
+                directory,duplicate=commit_import(self.runtime,rows,summary,label)
+                self._catalog_cache=None;self.catalog(refresh=True)
+                identifier=hashlib.sha256(str(directory.resolve()).encode()).hexdigest()[:16]
+                return {'snapshot_id':identifier,'duplicate':duplicate,'summary':summary}
+            raise ValueError('未知库存导入操作')
+
+    def manage_presets(self,payload):
+        from .ui_config import validate
+        if payload.get('action')=='save':
+            data=validate({'name':'角色预设','mode':'single','equipment':'borrow','allocation':'priority',
+                           'demands':[{'id':'preset','profile':payload.get('profile',{})}],'scenarios':None})
+            identifier=self.store.save_preset(data['demands'][0]['profile'])
+        elif payload.get('action')=='delete':
+            identifier=payload.get('id','')
+            if identifier not in {r['id'] for r in self.store.presets()}:raise ValueError('自定义预设不存在；内置示例不能删除')
+            self.store.delete_preset(identifier)
+        else:raise ValueError('未知预设操作')
+        self._catalog_cache=None
+        return {'id':identifier,'presets':self.store.presets()}
 
     def manage_storage(self,payload):
         from .storage_management import inspect,clean,regular_tree
@@ -144,7 +181,7 @@ class Backend:
         if not refresh and self._catalog_cache and time.monotonic()-self._catalog_time<15:return self._catalog_cache
         manifests=[read(p) for p in [self.runtime/'active-batch.json',*self.runtime.glob('previous-batch-*.json')]]
         by_scan={}
-        paths=set(self.runtime.glob('controller-*/job-*/enhancer-artifacts.json'))
+        paths=set(self.runtime.glob('controller-*/job-*/enhancer-artifacts.json'))|set(self.runtime.glob('imports/import-*/enhancer-artifacts.json'))
         for state in manifests:
             if not state:continue
             scan=Path(state.get('scan_directory',''));updates=Path(state.get('directory',''))/'inventory-updates.json'
@@ -163,21 +200,26 @@ class Backend:
             update=by_scan.get(str(path.parent.resolve()))
             modified=max(path.stat().st_mtime,update.stat().st_mtime if update else 0)
             source=read(path.parent/'snapshot-source.json')
+            imported=read(path.parent/'import-info.json')
             self.snapshots[identifier]={'id':identifier,'path':str(path.parent.resolve()),'updates':str(update) if update else None,
                 'count':count,'five_star':sum(a.get('rarity')==5 for a in raw),'date':datetime.fromtimestamp(modified).strftime('%m-%d %H:%M'),
-                'ownership_stale':bool(equip_time>modified or source),'label':path.parent.name,'derived':bool(source)}
+                'ownership_stale':bool(equip_time>modified or source),'label':imported['label'] if imported else path.parent.name,'derived':bool(source),
+                'source':'import' if imported else 'scan','import_summary':imported['summary'] if imported else None}
         profiles=[{'id':p.stem,'data':read(p)} for p in (self.root/'profiles').glob('*.json')]
         library=read(self.runtime/'loadouts/library.json',{'loadouts':{}})
         saved=[{'id':identifier,'name':revs[-1]['name'],'character':revs[-1]['character'],'revision':revs[-1]['revision'],
                 'items':revs[-1]['items']} for identifier,revs in library.get('loadouts',{}).items() if revs]
+        from .import_inventory import DATA
         result={'profiles':profiles,'sets':SET_LABELS,'main_options':MAINS,'means':{k:float(v) for k,v in MEANS.items()},
+                'characters':sorted(set(DATA['characters'].values())),
+                'presets':self.store.presets(),
                 'snapshots':[{k:v for k,v in s.items() if k not in ('path','updates')} for s in self.snapshots.values()],
                 'loadouts':saved,'configs':self.configurations(),'rolls':{k:[float(v) for v in values] for k,values in ROLLS.items()}}
         self._catalog_cache=result;self._catalog_time=time.monotonic();return result
 
     def snapshot(self,identifier):
         self.catalog(refresh=True)
-        if identifier not in self.snapshots:raise ValueError('请选择有效库存快照，或先扫描库存')
+        if identifier not in self.snapshots:raise ValueError('请先在“库存导入”页导入 JSON 或扫描库存')
         return self.snapshots[identifier]
 
     def latest_elixir(self,kind='elixir'):
@@ -341,7 +383,7 @@ def make_handler(backend):
                     self.send(200,backend.store.history(identifier) if len(parts)==4 and parts[3]=='history' else backend.store.config(identifier))
                 except ValueError as exc:self.send(400,{'error':str(exc)})
                 return
-            name={'/':'index.html','/app.js':'app.js','/storage.js':'storage.js','/dust.js':'dust.js','/longterm.js':'longterm.js','/style.css':'style.css'}.get(path)
+            name={'/':'index.html','/app.js':'app.js','/inventory.js':'inventory.js','/storage.js':'storage.js','/dust.js':'dust.js','/longterm.js':'longterm.js','/style.css':'style.css'}.get(path)
             if not name:self.send(404,{'error':'Not found'});return
             mime={'html':'text/html; charset=utf-8','js':'text/javascript; charset=utf-8','css':'text/css; charset=utf-8'}[name.rsplit('.',1)[1]]
             self.send(200,(ASSETS/name).read_bytes(),mime)
@@ -349,11 +391,15 @@ def make_handler(backend):
             if not self.trusted() or self.headers.get('X-Local-Token')!=backend.token:
                 self.send(403,{'error':'本地会话已失效，请刷新页面'});return
             try:
+                path=urlparse(self.path).path
                 length=int(self.headers.get('Content-Length','0'))
-                if not 0<length<=512000:raise ValueError('请求大小无效')
+                limit=12*1024*1024 if path=='/api/inventory/import' else 512000
+                if not 0<length<=limit:raise ValueError('请求大小无效')
                 data=json.loads(self.rfile.read(length))
                 path=urlparse(self.path).path
                 if path=='/api/config':result=backend.save_config(data)
+                elif path=='/api/inventory/import':result=backend.import_inventory(data)
+                elif path=='/api/presets':result=backend.manage_presets(data)
                 elif path=='/api/storage':result=backend.manage_storage(data)
                 elif path=='/api/draft':result=backend.store.save_draft(data['client'],data['sequence'],data['payload'])
                 elif path=='/api/jobs':result=backend.submit(data)

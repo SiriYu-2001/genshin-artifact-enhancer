@@ -51,7 +51,7 @@ def main():
     shutil.copy2(ROOT/'requirements.txt',source/'requirements.txt')
     shutil.copy2(__file__,source/'build_windows.py')
     docs=app/'docs';docs.mkdir()
-    for name in ('资源规划使用指南.md','长期资源策略与数学模型.md','启圣之尘与霜尘规划.md','Windows便携版.md'):
+    for name in ('资源规划使用指南.md','长期资源策略与数学模型.md','启圣之尘与霜尘规划.md','Windows便携版.md','库存导入与角色预设.md'):
         shutil.copy2(ROOT/'docs'/name,docs/name)
     licenses=app/'third-party';licenses.mkdir()
     for name in ('numpy','Pillow','requests','opencv-python','onnxruntime','PyInstaller','certifi','urllib3','charset-normalizer','idna',

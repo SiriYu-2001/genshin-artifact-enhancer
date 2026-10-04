@@ -16,7 +16,7 @@ const dustHistory=await (await realFetch(base+'/api/dust/latest')).json();
 bootstrap.draft=null; // Test a fresh browser, not the user's existing database draft.
 const dom=new JSDOM(html,{url:base,pretendToBeVisual:true});
 globalThis.window=dom.window;globalThis.document=dom.window.document;globalThis.localStorage=dom.window.localStorage;
-const requests=[];let savedConfig=null;let archived=false;
+const requests=[];let savedConfig=null;let archived=false;let imported=false;bootstrap.catalog.presets=[];
 const storageId='b'.repeat(32);
 const storageConfig={name:'重复配置',demands:[{profile:bootstrap.catalog.profiles[0].data}]};
 globalThis.fetch=async(url,options={})=>{
@@ -36,6 +36,14 @@ globalThis.fetch=async(url,options={})=>{
     const item={id:storageId,config:storageConfig,updated:Date.now()/1000,deleted:Date.now()/1000};
     return Response.json({directory:'test-runtime',sizes:{database:100,screenshots:200,records:100},configs:archived?[]:[item],trash:archived?[item]:[],blocked:[],count:2,bytes:200,protected_screenshots:1});
   }
+  if(url==='/api/inventory/import'){
+    if(body.action==='preview')return Response.json({preview:'import-preview',format:'GOOD v3',total:6,accepted:5,skipped_non_five:1,error_count:0,errors:[],can_import:true,unknown_owner:0,unknown_kind:0,defined:1,missing_preview:0,mature:5,excluded:0,identical_extra:0,scope:'文件内库存'});
+    imported=true;const row={id:'imported-json',date:'01-01 00:00',five_star:5,count:5,source:'import',label:'test.json',ownership_stale:false};bootstrap.catalog.snapshots.unshift(row);return Response.json({snapshot_id:row.id,duplicate:false});
+  }
+  if(url==='/api/presets'){
+    if(body.action==='save'){bootstrap.catalog.presets=[{id:'c'.repeat(32),data:body.profile,custom:true}];return Response.json({id:'c'.repeat(32)});}
+    bootstrap.catalog.presets=[];return Response.json({ok:true});
+  }
   if(url==='/api/config'){
     savedConfig=body.config;
     return Response.json({id:'a'.repeat(32),config:body.config});
@@ -47,6 +55,8 @@ globalThis.fetch=async(url,options={})=>{
 };
 const app=await import(pathToFileURL(path.join(root,'web/app.js')));
 await window.__appReady;
+assert.equal(window.location.hash,'#inventory');
+assert.ok(document.getElementById('inventory-import'));
 assert.equal(app.importDraft(bootstrap.catalog.profiles[0].data).mode,'single');
 const $=id=>document.getElementById(id);
 if(history){assert.ok($('elixir-results').textContent.includes(history.character));assert.equal($('elixir-export').disabled,false);}
@@ -174,5 +184,15 @@ assert.ok(archived);assert.ok($('storage-trash').textContent.includes('恢复'))
 document.querySelector('[data-restore]').click();await tick();await tick();assert.ok(!archived);
 $('storage-preview').click();await tick();assert.equal($('storage-clean').disabled,false);
 $('storage-clean').click();await tick();assert.ok(requests.some(r=>r.url==='/api/storage'&&r.body?.action==='clean'));
+window.ArtifactWorkbench.showPage('inventory');
+await window.ArtifactWorkbench.importInventory({name:'test.json',size:500,text:async()=>'{"format":"GOOD"}'});
+assert.equal($('inventory-confirm').disabled,false);assert.ok($('inventory-preview-body').textContent.includes('跳过 1 件低星'));
+$('inventory-confirm').click();await tick();await tick();assert.ok(imported);
+assert.equal($('snapshot').value,'imported-json');assert.equal($('fresh-scan').checked,false);
+$('inventory-next').click();assert.equal(window.location.hash,'#configure');
+$('save-preset').click();await tick();await tick();assert.ok(bootstrap.catalog.presets.length===1);
+$('template-select').value='user:'+'c'.repeat(32);$('template-select').dispatchEvent(new window.Event('change'));
+assert.equal($('delete-preset').disabled,false);
+$('delete-preset').click();await tick();await tick();assert.equal(bootstrap.catalog.presets.length,0);
 await window.ArtifactWorkbench.flushDraft();window.ArtifactWorkbench.dispose();dom.window.close();
 console.log('DOM checks passed: 112 existing controls, guide navigation, accessible state, CSS parsing, advanced validation, saved settings, recommendation rendering and metadata editing. No game job launched.');

@@ -47,7 +47,9 @@ def fresh_scan():
                 if state.get('exitCode')!=0:raise RuntimeError(f"yas failed: {state['directory']}")
                 scan=Path(state['directory'])
                 _,_,coverage=load_scan(scan)
-                if not coverage['complete']:raise RuntimeError(f'Incomplete scan: {coverage}')
+                if not coverage['complete']:
+                    raise RuntimeError(f"扫描未完成：预期 {coverage['requested']} 件，返回 {coverage['recognized']} 件，缺少 {len(coverage['missing_positions'])} 个位置。"
+                                       "本次不作为完整扫描继续培养。可在“库存导入”页导入 GOODScanner／莫娜 JSON 后继续计算；具体扫描原因需查看本轮日志。")
                 print(json.dumps({'scan_finished':str(scan),'coverage':coverage},ensure_ascii=False),flush=True)
                 return scan
         if time.monotonic()-last_notice>45:

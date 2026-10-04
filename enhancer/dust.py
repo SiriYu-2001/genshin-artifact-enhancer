@@ -70,7 +70,7 @@ class DustAdvisor:
         selected=metadata.get('defined_pair')
         if selected is not None and (not isinstance(selected,list) or len(selected)!=2 or len(set(selected))!=2 or set(selected)-set(keys)):
             raise ValueError('定制件锁定词条必须是当前物品中的两个不同副属性')
-        if artifact.special!='ordinary' and selected is None:raise ValueError('定制件缺少锁定词条，请填入游戏自动选中的两条')
+        if artifact.special!='ordinary' and selected is None:raise ValueError('定制状态未知，或定制件缺少锁定词条；请核验来源数据及游戏自动选中的两条')
         pairs=[tuple(selected)] if artifact.special!='ordinary' else list(combinations(keys,2))
         complements={b:self.inventory.complement(artifact,b) for b in ('lo','hi')}
         if not complements['lo'].points:raise ValueError('该物品无法组成满足约束的4+1配装')

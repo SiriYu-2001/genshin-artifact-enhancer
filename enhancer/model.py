@@ -90,6 +90,7 @@ class Artifact:
     equipped: str = ""
     locked: bool = False
     special: str = "ordinary"  # unknown/defined pieces require separate state data
+    excluded: bool = False  # explicit omission in an imported inventory
 
     def validate(self):
         if self.rarity != 5 or not 0 <= self.level <= 20 or self.slot not in SLOTS:
@@ -132,7 +133,7 @@ class Profile:
         return F(str(self.data["weights"].get(key, 0)))
 
     def allows(self, artifact):
-        return (artifact.rarity == 5
+        return (artifact.rarity == 5 and not artifact.excluded
                 and artifact.main in self.data["main_stats"].get(artifact.slot, [])
                 and artifact.id not in self.data["reserved_ids"]
                 and (not artifact.equipped or "*" in self.data["allowed_equipped_characters"]

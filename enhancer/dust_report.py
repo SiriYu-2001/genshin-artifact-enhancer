@@ -44,6 +44,8 @@ def calculate(config_directory,snapshot,demand_id,progress=lambda x:None):
     options=settings(data.get('dust'))
     if data['equipment']=='protected' and snapshot.get('ownership_stale'):raise ValueError('不借用模式需要新的装备归属，请重新扫描')
     pool,names,coverage=load_scan(snapshot['path'])
+    from .import_inventory import imported_metadata
+    imported=imported_metadata(snapshot['path'])
     if not coverage['complete']:raise ValueError('需要完整库存快照')
     if snapshot.get('updates'):pool=apply_updates(pool,json.loads(Path(snapshot['updates']).read_text(encoding='utf-8')))
     campaign=Campaign.load(config/'campaign.json')
@@ -64,7 +66,7 @@ def calculate(config_directory,snapshot,demand_id,progress=lambda x:None):
             'inventory':[],'actions':[],'deferred':[],
             'scope':'当前一次重塑的整套提升；允许保留原结果。初始值不明时给出保守区间；三/四次保底列是条件比较，不是可以直接选用的模式。未求解全预算跨物品动态最优。'}
     for index,a in enumerate(candidates,1):
-        sig=fingerprint(a);meta=options['metadata'].get(sig,{})
+        sig=fingerprint(a);meta=imported.get(a.id,{})|options['metadata'].get(sig,{})
         item={'id':a.id,'fingerprint':sig,'name':names.get(a.id,a.id),'slot':a.slot,'main':a.main,'set_label':SET_LABELS.get(a.set_key,a.set_key),
               'special':a.special,'substats':[{'key':s.key,'value':float(s.value)} for s in a.stats]}
         result['inventory'].append(item)

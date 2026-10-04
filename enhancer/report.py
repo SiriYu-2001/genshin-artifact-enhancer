@@ -38,7 +38,8 @@ def load_scan(directory):
             equip = override["equipped"]
         a = Artifact(identifier, entry["setKey"], entry["slotKey"], entry["mainStatKey"], entry["level"],
                      tuple(Stat.from_dict(s) for s in entry["substats"]), entry["rarity"], equip,
-                     entry["lock"], "defined" if entry["special"] else "ordinary")
+                     entry["lock"], entry.get('enhancement_kind',"defined" if entry["special"] else "ordinary"),
+                     entry.get('excluded',False))
         artifacts.append(a)
         names[identifier] = entry["name"]
     missing = sorted(set(range(1, scan_count + 1)) - seen)

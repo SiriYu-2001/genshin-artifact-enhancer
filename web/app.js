@@ -1,3 +1,4 @@
+import {createInventoryUI} from './inventory.js';
 import {storageUI} from './storage.js';
 import {createDustUI} from './dust.js';
 import {forecastForm,forecastHTML} from './longterm.js';
@@ -10,7 +11,7 @@ const copy=x=>JSON.parse(JSON.stringify(x));
 let catalog,token,draft,active=0,configId=null,latestResult=null,busy=false,dragId=null,toastTimer,renderStamp='';
 let autosaveTimer,draftSequence=Date.now(),draftClient,contextTime=0;
 let lastElixir=null,activeElixirJob=null,dustUI=null,renderForecast=null,lastEmergencyAt=0;
-let storagePanel=null,storageInstance='default';
+let storagePanel=null,inventoryPanel=null,selectedPreset=null,storageInstance='default';
 const cacheKey=name=>`artifact-workbench-${storageInstance}-${name}-v2`;
 
 function elixirOptions(){return draft.elixir??=( {budget:4,remaining_by_set:{},minimum_gain:0,objective:'expected_gain',respect_priority:true} );}
@@ -101,9 +102,9 @@ function showPage(name){
   if(!document.getElementById('page-'+name))return;
   document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+name));
   document.querySelectorAll('.nav').forEach(n=>{const selected=n.dataset.page===name;n.classList.toggle('active',selected);if(selected)n.setAttribute('aria-current','page');else n.removeAttribute('aria-current');});
-  const names={configure:'培养配置',run:'运行与结果',elixir:'祝圣之霜',dust:'启圣之尘',loadouts:'我的配装',engine:'识别与运行',guide:'使用指南',storage:'数据管理'};
+  const names={inventory:'库存导入',configure:'角色与预设',run:'运行与结果',elixir:'祝圣之霜',dust:'启圣之尘',loadouts:'我的配装',engine:'识别与运行',guide:'使用指南',storage:'数据管理'};
   $('current-page-title').textContent=names[name]||name;
-  if(name==='storage')storagePanel?.refresh();if(name==='elixir')renderElixirForm();if(name==='dust')dustUI?.form();
+  if(name==='inventory')inventoryPanel?.render();if(name==='storage')storagePanel?.refresh();if(name==='elixir')renderElixirForm();if(name==='dust')dustUI?.form();
   window.history.replaceState(null,'','#'+name);
 }
 function makeDemand(p){return {id:'d-'+Math.random().toString(36).slice(2,10),profile:copy(p)};}
@@ -133,14 +134,18 @@ function renderScenes(){
   $('equip-scene').value=draft.equip_scene??'';
 }
 function renderDraft(){active=Math.min(active,draft.demands.length-1);$('config-name').value=draft.name;$('equipment').value=draft.equipment;$('allocation').value=draft.allocation;renderDemands();renderEditor();renderScenes();renderElixirForm();}
+function renderPresetOptions(){
+  $('template-select').innerHTML='<option value="">选择角色预设…</option><optgroup label="我的预设">'+(catalog.presets||[]).map(p=>`<option value="user:${esc(p.id)}">${esc(p.data.character)} · ${esc(p.data.name)}</option>`).join('')+'</optgroup><optgroup label="内置示例">'+catalog.profiles.map(p=>`<option value="${esc(p.id)}">${esc(p.data.name)}</option>`).join('')+'</optgroup>';
+  $('character-options').innerHTML=(catalog.characters||[]).map(n=>`<option value="${esc(n)}"></option>`).join('');
+}
 function renderCatalog(){
   const snapshot=$('snapshot').value;
-  $('snapshot').innerHTML=catalog.snapshots.length?catalog.snapshots.map(s=>`<option value="${s.id}">${s.date} · ${s.five_star} 件五星${s.derived?' · 记录快照':''}</option>`).join(''):'<option value="">暂无完整扫描</option>';
+  $('snapshot').innerHTML=catalog.snapshots.length?catalog.snapshots.map(s=>`<option value="${s.id}">${s.date} · ${s.five_star} 件五星${s.source==='import'?' · JSON 导入':s.derived?' · 记录快照':''}</option>`).join(''):'<option value="">请先导入或扫描库存</option>';
   if(catalog.snapshots.some(s=>s.id===snapshot))$('snapshot').value=snapshot;
   $('saved-configs').innerHTML='<option value="">打开已保存配置…</option>'+catalog.configs.map(c=>`<option value="${c.id}">${esc(c.name)} · ${c.count}需求</option>`).join('');
-  renderLibrary();snapshotNote();renderElixirForm();
+  renderLibrary();snapshotNote();renderElixirForm();renderPresetOptions();inventoryPanel?.render();
 }
-function snapshotNote(){const s=catalog.snapshots.find(s=>s.id===$('snapshot').value);$('snapshot-note').textContent=!s?'先扫描库存，或直接开始并执行一次新扫描。':s.ownership_stale?'此快照之后有换装记录，装备归属可能过期；不借用模式需重新扫描。':'可用于离线计算。若在任务外变更了库存，请重新扫描。';$('snapshot-note').className='small '+(s?.ownership_stale?'warning':'muted');}
+function snapshotNote(){const s=catalog.snapshots.find(s=>s.id===$('snapshot').value);$('snapshot-note').textContent=!s?'请先到“库存导入”页选择 JSON 或扫描库存。':s.ownership_stale?'此快照之后有换装记录，装备归属可能过期；不借用模式需重新扫描。':s.source==='import'?`已选 JSON 库存：${s.five_star} 件五星。结果仅针对文件内库存；缺少状态的信息会保留待核验。`:'可用于离线计算。若在任务外变更了库存，请重新导入或扫描。';$('snapshot-note').className='small '+(s?.ownership_stale?'warning':'muted');}
 function renderLibrary(){
   $('loadout-list').innerHTML=catalog.loadouts.length?catalog.loadouts.map(l=>`<article class="panel loadout-card"><label class="check-line"><input type="checkbox" value="${esc(l.id)}" class="loadout-check">${esc(l.character)}<span class="tag">v${l.revision}</span></label><p class="small muted">${esc(l.name)}</p>${l.items.map(a=>`<div class="loadout-item"><span>${SLOT[a.attributes.slot]}</span><span>${esc(a.name)}</span><small>+${a.attributes.level} · ${STAT[a.attributes.main]||a.attributes.main}</small></div>`).join('')}</article>`).join(''):'<div class="empty-state"><h3>还没有保存配装</h3><p>完成只计算后，点击“保存为本地配装”。</p></div>';
 }
@@ -163,10 +168,10 @@ function renderResults(result){
 }
 function detailFromLogs(logs){for(let i=logs.length-1;i>=0;i--){try{const x=JSON.parse(logs[i]);if(['controller_starting','controller_ready'].includes(x.phase))return x.message;if(x.phase==='dust')return `启圣之尘：已分析 ${x.done}/${x.total} 件，不操作游戏。`;if(x.phase==='elixir')return `祝圣之霜：已枚举 ${x.done}/${x.total} 种选择，不操作游戏。`;if(x.phase==='elixir_pairs')return '正在比较两次定制的固定候选方案，不操作游戏。';if(x.level!==undefined&&x.probability_before!==undefined)return `当前已到 +${x.level}，此前改善概率 ${(x.probability_before*100).toFixed(2)}%。`;if(x.eligible!==undefined)return `库存重算：${x.eligible} 件候选达到概率阈值。`;if(x.phase==='equipping_final_builds')return '强化已结束，正在按优先级穿戴最终配装。';if(x.stopped)return '单件决策已结束，正在更新库存并重算下一件。';if(x.phase==='planning')return `正在为 ${x.demands} 个需求计算配装与强化概率，本阶段不操作游戏。`;if(x.phase==='scanning')return 'yas 正在扫描库存，结束后自动计算并进入队列。';if(x.phase==='enhancing'&&x.demand)return `正在处理需求 ${x.demand}，脚本自行选择候选并逐阶段决策。`;if(x.scan_finished)return '扫描完成，正在计算最优配装。';if(x.preflight)return `换装预检：${x.preflight}`;if(x.slot&&x.status)return `部位 ${SLOT[x.slot]}：${x.status==='equipped'?'穿戴已核验':'原本正确，跳过'}`;}catch{}}return '本地脚本正在处理，请保持游戏界面可用。';}
 async function refreshState(){
-  try{const state=await api('/api/state');busy=state.busy;dustUI?.state(state);if(state.hotkey?.last_stop_requested>lastEmergencyAt){lastEmergencyAt=state.hotkey.last_stop_requested;notify('已紧急中断当前任务；未确认记录已保留');}$('hotkey-status').textContent=[state.hotkey?.win_registered?'Win键：有任务时中断，保留系统功能':'',state.hotkey?.registered?state.hotkey.shortcut+'：全局紧急中断':'',state.hotkey?.error||''].filter(Boolean).join(' · ')||'全局快捷键未启用；可使用紧急中断按钮';
+  try{const state=await api('/api/state');busy=state.busy;inventoryPanel?.state(busy);dustUI?.state(state);if(state.hotkey?.last_stop_requested>lastEmergencyAt){lastEmergencyAt=state.hotkey.last_stop_requested;notify('已紧急中断当前任务；未确认记录已保留');}$('hotkey-status').textContent=[state.hotkey?.win_registered?'Win键：有任务时中断，保留系统功能':'',state.hotkey?.registered?state.hotkey.shortcut+'：全局紧急中断':'',state.hotkey?.error||''].filter(Boolean).join(' · ')||'全局快捷键未启用；可使用紧急中断按钮';
     if(state.timings?.length)$('timings').innerHTML=`<table><thead><tr><th>读取类型</th><th>次数</th><th>平均</th><th>P90</th></tr></thead><tbody>${state.timings.map(t=>`<tr><td>${esc(t.name)}</td><td>${t.count}</td><td>${t.average_ms} ms</td><td>${t.p90_ms} ms</td></tr>`).join('')}</tbody></table>`;
     $('connection-dot').className='online';$('connection').textContent=busy?'本地任务运行中':'本地服务已连接';
-    for(const id of ['scan-only','preview','start','equip-loadouts','elixir-calculate'])$(id).disabled=busy;
+    for(const id of ['scan-only','preview','start','equip-loadouts','elixir-calculate','save-preset','template-select'])$(id).disabled=busy;
     $('resume').disabled=busy||!state.can_resume;$('stop').disabled=!busy;
     const job=state.job;activeElixirJob=busy&&job?.kind==='elixir'?job.id:null;$('elixir-stop').hidden=!activeElixirJob;if(!job)return;
     document.querySelector('.steps').hidden=['elixir','dust'].includes(job.kind);
@@ -189,6 +194,7 @@ async function refreshState(){
 }
 async function saveCurrent(){if(!validateForm($('profile-form')))throw Error('请补全有效的数字与角色配置');const result=await api('/api/config',{id:configId,config:serializeDraft(draft,active)});configId=result.id;persist();$('save-state').textContent='已保存到本地数据库';return result.id;}
 async function launch(kind){
+  if(['preview','equip'].includes(kind)&&!$('snapshot').value){showPage('inventory');throw Error('请先导入或扫描库存');}
   const data={kind};if(['start','preview'].includes(kind))data.config_id=await saveCurrent();
   if(['start','preview','equip'].includes(kind))data.snapshot_id=$('snapshot').value;
   if(kind==='start')data.fresh=$('fresh-scan').checked;
@@ -221,7 +227,9 @@ function events(){
   $('weights').oninput=e=>{if(e.target.dataset.weight){profile().weights[e.target.dataset.weight]=e.target.valueAsNumber;changed();}};
   $('main-stats').onclick=e=>{const b=e.target.closest('[data-stat]');if(!b)return;const values=profile().main_stats[b.dataset.slot],i=values.indexOf(b.dataset.stat);if(i<0)values.push(b.dataset.stat);else values.splice(i,1);changed();renderEditor();};
   $('equipment').onchange=e=>{draft.equipment=e.target.value;changed();};$('allocation').onchange=e=>{draft.allocation=e.target.value;changed();};
-  $('template-select').onchange=e=>{const template=catalog.profiles.find(t=>t.id===e.target.value);if(template){draft.demands[active].profile=copy(template.data);changed();renderDraft();}e.target.value='';};
+  $('template-select').onchange=e=>{const id=e.target.value;const custom=id.startsWith('user:');const template=(custom?(catalog.presets||[]):catalog.profiles).find(t=>t.id===(custom?id.slice(5):id));if(template){selectedPreset=custom?template.id:null;draft.demands[active].profile=copy(template.data);changed();renderDraft();$('delete-preset').disabled=!selectedPreset;$('preset-note').textContent=custom?'已套用本地预设；修改后保存会更新同角色、同用途的预设。':'内置示例仅作起点，请核对当前养成下的权重与暴击率上限。';}e.target.value='';};
+  $('save-preset').onclick=protect(async()=>{if(!validateForm($('profile-form')))throw Error('请先补全角色评分');const r=await api('/api/presets',{action:'save',profile:profile()});selectedPreset=r.id;catalog=await api('/api/catalog');renderPresetOptions();$('delete-preset').disabled=false;notify('角色预设已保存到本地数据库');});
+  $('delete-preset').onclick=protect(async()=>{if(!selectedPreset||!window.confirm('删除所选自定义预设？当前培养配置保留。'))return;await api('/api/presets',{action:'delete',id:selectedPreset});selectedPreset=null;catalog=await api('/api/catalog');renderPresetOptions();$('delete-preset').disabled=true;notify('预设已删除');});
   $('add-demand').onclick=()=>{if(draft.demands.length>=40)return notify('最多40个需求',true);draft.demands.push(makeDemand(profile()));active=draft.demands.length-1;profile().name+=' · 新用途';if(draft.scenarios)draft.scenarios[0]?.demands.push(draft.demands[active].id);changed();renderDraft();};
   $('demand-list').onclick=e=>{const card=e.target.closest('[data-demand]');if(!card)return;const i=draft.demands.findIndex(d=>d.id===card.dataset.demand);if(e.target.dataset.move){active=moveDemand(draft,i,i+Number(e.target.dataset.move));changed();}else if(e.target.dataset.remove){if(draft.demands.length===1)return;const [removed]=draft.demands.splice(i,1);draft.scenarios?.forEach(s=>s.demands=s.demands.filter(id=>id!==removed.id));active=Math.min(i,draft.demands.length-1);changed();}else active=i;renderDraft();};
   $('demand-list').onkeydown=e=>{if(e.key==='Enter'&&e.target.dataset.demand)e.target.click();};
@@ -232,7 +240,7 @@ function events(){
   $('scenes').oninput=e=>{if(e.target.dataset.sceneName!==undefined){draft.scenarios[+e.target.dataset.sceneName].name=e.target.value;changed();}};
   $('scenes').onchange=e=>{if(e.target.dataset.scene===undefined)return;const s=draft.scenarios[+e.target.dataset.scene],id=e.target.dataset.id;if(e.target.checked)s.demands.push(id);else s.demands=s.demands.filter(x=>x!==id);changed();};
   $('scenes').onclick=e=>{if(e.target.dataset.removeScene!==undefined){draft.scenarios.splice(+e.target.dataset.removeScene,1);changed();renderScenes();}};
-  $('snapshot').onchange=()=>{snapshotNote();renderElixirForm();persist();};$('fresh-scan').onchange=persist;
+  $('snapshot').onchange=()=>{snapshotNote();renderElixirForm();inventoryPanel?.render();persist();};$('fresh-scan').onchange=persist;
   $('auto-equip-after').onchange=e=>{draft.auto_equip_after=e.target.checked;changed();renderScenes();};
   $('equip-scene').onchange=e=>{draft.equip_scene=e.target.value===''?null:Number(e.target.value);changed();};
   $('save-config').onclick=protect(async()=>{await saveCurrent();catalog=await api('/api/catalog');renderCatalog();notify('配置已保存');});
@@ -241,7 +249,7 @@ function events(){
   $('saved-configs').onchange=protect(async e=>{if(!e.target.value)return;configId=e.target.value;draft=await api('/api/config/'+configId);active=0;renderDraft();persist();$('save-state').textContent='已打开保存的配置';});
   $('export-config').onclick=()=>download(serializeDraft(draft,active),draft.name);
   $('import-config').onclick=()=>$('import-file').click();$('import-file').onchange=protect(async e=>{const file=e.target.files[0];if(!file)return;const data=importDraft(JSON.parse(await file.text()));const saved=await api('/api/config',{config:data});draft=saved.config;configId=saved.id;active=0;renderDraft();persist();catalog=await api('/api/catalog');renderCatalog();notify('配置已导入');e.target.value='';});
-  for(const [id,kind] of [['preview','preview'],['start','start'],['scan-only','scan'],['resume','resume'],['equip-loadouts','equip']])$(id).onclick=protect(()=>launch(kind));
+  for(const [id,kind] of [['preview','preview'],['start','start'],['resume','resume'],['equip-loadouts','equip']])$(id).onclick=protect(()=>launch(kind));
   $('emergency-stop').onclick=protect(async()=>{await api('/api/emergency-stop',{});notify('已请求紧急中断；保留未确认记录，不自动重试');await refreshState();});
   $('stop').onclick=protect(async()=>{await api('/api/stop',{});notify('已请求停止，正在保留结果');});
   $('save-loadouts').onclick=protect(async()=>{await api('/api/save-loadouts',{});catalog=await api('/api/catalog');renderCatalog();notify('五件配装已保存到本地库');});
@@ -257,7 +265,7 @@ export async function boot(){
   // Legacy local drafts have no timestamp; preserve them instead of guessing.
   if(data.draft&&(!localStorage.getItem(cacheKey('draft'))||(contextTime&&data.draft.updated*1000>contextTime))){draft=data.draft.payload.config;active=data.draft.payload.active_index||0;configId=data.draft.payload.config_id||null;localContext=data.draft.payload;}
   $('set-key').innerHTML=Object.entries(catalog.sets).map(([k,v])=>`<option value="${k}">${esc(v)}</option>`).join('');
-  $('template-select').innerHTML='<option value="">套用预设…</option>'+catalog.profiles.map(p=>`<option value="${esc(p.id)}">${esc(p.data.name)}</option>`).join('');
+  renderPresetOptions();
   renderForecast=forecastForm('elixir',elixirOptions,persist);
   renderDraft();renderCatalog();if(localContext?.ui){$('fresh-scan').checked=localContext.ui.fresh!==false;if(catalog.snapshots.some(s=>s.id===localContext.ui.snapshot_id))$('snapshot').value=localContext.ui.snapshot_id;snapshotNote();}renderElixirForm();events();
   dustUI=createDustUI({$,STAT,SLOT,api,notify,download,showPage,persist,validateForm,save:saveCurrent,refresh:refreshState,draft:()=>draft,catalog:()=>catalog,selected:()=>draft.demands[active],select:id=>{active=draft.demands.findIndex(d=>d.id===id);renderDraft();persist();},snapshot:id=>{$('snapshot').value=id;snapshotNote();persist();}});
@@ -273,8 +281,9 @@ export async function boot(){
     }
     renderCatalog();
   }});
-  await refreshState();await flushDraft();if(window.location.hash)showPage(window.location.hash.slice(1));
-  window.ArtifactWorkbench={getDraft:()=>copy(draft),serialize:()=>serializeDraft(draft,active),showPage,flushDraft,
+  inventoryPanel=createInventoryUI({api,catalog:()=>catalog,selected:()=>$('snapshot').value,choose:id=>{$('snapshot').value=id;$('fresh-scan').checked=false;snapshotNote();renderElixirForm();persist();},refresh:async()=>{catalog=await api('/api/catalog');renderCatalog();},scan:()=>launch('scan'),notify});
+  inventoryPanel.render();await refreshState();await flushDraft();showPage(window.location.hash?window.location.hash.slice(1):'inventory');
+  window.ArtifactWorkbench={getDraft:()=>copy(draft),serialize:()=>serializeDraft(draft,active),showPage,flushDraft,importInventory:file=>inventoryPanel.previewFile(file),
     dispose:()=>{clearTimeout(autosaveTimer);clearTimeout(toastTimer);clearInterval(window.__pollTimer);}};
   document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(autosaveTimer);flushDraft();}});
   window.__pollTimer=setInterval(refreshState,1600);

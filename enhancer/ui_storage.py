@@ -20,6 +20,7 @@ class LocalStore:
                 CREATE TABLE IF NOT EXISTS draft_versions(client TEXT NOT NULL, revision INTEGER NOT NULL,
                     payload TEXT NOT NULL, created REAL NOT NULL, PRIMARY KEY(client,revision));
                 CREATE TABLE IF NOT EXISTS deleted_configs(id TEXT PRIMARY KEY, deleted REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS profile_presets(id TEXT PRIMARY KEY, payload TEXT NOT NULL, updated REAL NOT NULL);
             ''')
 
     @contextmanager
@@ -30,6 +31,22 @@ class LocalStore:
         try:
             with db:yield db
         finally:db.close()
+
+    def presets(self):
+        with self.connection() as db:rows=db.execute('SELECT * FROM profile_presets ORDER BY updated DESC').fetchall()
+        return [{'id':r['id'],'data':json.loads(r['payload']),'updated':r['updated'],'custom':True} for r in rows]
+
+    def save_preset(self,profile):
+        import hashlib
+        key=hashlib.sha256((profile['character'].strip()+'\0'+profile['name'].strip()).encode()).hexdigest()[:32]
+        encoded=json.dumps(profile,ensure_ascii=False,sort_keys=True,allow_nan=False)
+        with self.connection() as db:
+            db.execute('INSERT INTO profile_presets VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated=excluded.updated',
+                       (key,encoded,time.time()))
+        return key
+
+    def delete_preset(self,identifier):
+        with self.connection() as db:db.execute('DELETE FROM profile_presets WHERE id=?',(identifier,))
 
     def save_config(self,identifier,payload):
         encoded=json.dumps(payload,ensure_ascii=False,sort_keys=True,allow_nan=False);now=time.time()

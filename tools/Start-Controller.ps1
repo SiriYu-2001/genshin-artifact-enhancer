@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$OrtDll,[ValidateRange(15,180)][int]$DurationMinutes=120)
+param([Parameter(Mandatory=$true)][string]$OrtDll,[ValidateRange(15,180)][int]$DurationMinutes=120,[string]$SessionId='')
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path -Parent $PSScriptRoot
 $runtime=Join-Path $projectRoot 'runtime'
@@ -13,10 +13,9 @@ $yasHash=(Get-FileHash -LiteralPath $yas -Algorithm SHA256).Hash
 $env:ORT_DYLIB_PATH=(Resolve-Path -LiteralPath $OrtDll).Path
 $env:RAYON_NUM_THREADS='4'
 $frostflake=Join-Path $projectRoot 'bin\cocogoat-control.exe'
-if(-not(Test-Path -LiteralPath $frostflake)){$frostflake='C:\Program Files\cocogoat-control\cocogoat-control.exe'}
-if(-not(Test-Path -LiteralPath $frostflake)){throw 'Frostflake executable is missing.'}
-if(Get-Process -Name 'cocogoat-control' -ErrorAction SilentlyContinue){throw 'Existing bridge is already running.'}
-if(Test-Path -LiteralPath $stopPath){Remove-Item -LiteralPath $stopPath}
+if(-not(Test-Path -LiteralPath $frostflake)){throw 'Bundled Frostflake is missing: bin/cocogoat-control.exe. Extract the complete release ZIP.'}
+if(Get-Process -Name 'cocogoat-control' -ErrorAction SilentlyContinue){throw 'A different Frostflake instance is running. Exit that plugin (or stop the other Workbench task), then retry. Do not launch Frostflake manually; Workbench starts its bundled copy.'}
+if(Test-Path -LiteralPath $stopPath){throw 'Stop requested; controller will not start.'}
 $runDir=Join-Path $runtime ('controller-'+(Get-Date -Format 'yyyyMMdd-HHmmss'))
 $requestDir=Join-Path $runDir 'requests'
 $responseDir=Join-Path $runDir 'responses'
@@ -27,7 +26,7 @@ $rng=[Security.Cryptography.RandomNumberGenerator]::Create()
 $rng.GetBytes($bytes)
 $rng.Dispose()
 $token=[BitConverter]::ToString($bytes).Replace('-','').ToLowerInvariant()
-$session=[ordered]@{state='starting';busy=$false;endpoint='http://127.0.0.1:32333';token=$token;directory=$runDir;expires=(Get-Date).AddMinutes($DurationMinutes).ToString('o');yasHash=$yasHash}
+$session=[ordered]@{state='starting';busy=$false;session_id=$SessionId;controller_pid=$PID;endpoint='http://127.0.0.1:32333';token=$token;directory=$runDir;expires=(Get-Date).AddMinutes($DurationMinutes).ToString('o');yasHash=$yasHash;bridge_path=$frostflake}
 $bridge=$null
 $scanner=$null
 $deadline=(Get-Date).AddMinutes($DurationMinutes)
@@ -40,8 +39,22 @@ function Save-Session {
 }
 try {
     $bridge=Start-Process -FilePath $frostflake -ArgumentList ('--local-auth='+$token+' --hide-window=true --stay') -WindowStyle Hidden -PassThru
-    $session.state='running'
     $session['pid']=$bridge.Id
+    Save-Session
+    $ready=$false
+    $client=[Net.WebClient]::new()
+    $client.Proxy=$null
+    $client.Headers.Add('Authorization','Bearer '+$token)
+    $client.Headers.Add('Origin','http://127.0.0.1')
+    try {
+        for($attempt=0;$attempt -lt 40;$attempt++){
+            if(Test-Path -LiteralPath $stopPath){throw 'Stop requested during startup.'}
+            if($bridge.HasExited){throw 'Bundled Frostflake exited before readiness. Check whether another plugin owns port 32333.'}
+            try {$null=$client.DownloadString('http://127.0.0.1:32333/api/windows');$ready=$true;break} catch {Start-Sleep -Milliseconds 200}
+        }
+    } finally {$client.Dispose()}
+    if(-not $ready){throw 'Bundled Frostflake did not answer its authenticated readiness check.'}
+    $session.state='running'
     Save-Session
     while(-not (Test-Path -LiteralPath $stopPath)){
         $now=Get-Date
@@ -154,5 +167,5 @@ try {
 } finally {
     if($scanner -and -not $scanner.HasExited){$scanner.Kill();$scanner.WaitForExit()}
     if($bridge -and -not $bridge.HasExited){$bridge.Kill();$bridge.WaitForExit()}
-    [ordered]@{state='stopped';busy=$false;directory=$runDir;finished=(Get-Date).ToString('o');reason=$exitReason;bridgeRestarts=$bridgeRestarts}|ConvertTo-Json|Set-Content -LiteralPath $sessionPath -Encoding UTF8
+    [ordered]@{state='stopped';busy=$false;session_id=$SessionId;directory=$runDir;finished=(Get-Date).ToString('o');reason=$exitReason;bridgeRestarts=$bridgeRestarts}|ConvertTo-Json|Set-Content -LiteralPath $sessionPath -Encoding UTF8
 }

@@ -324,8 +324,10 @@ def make_handler(backend):
             if not self.trusted():self.send(403,{'error':'只允许本地页面访问'});return
             path=urlparse(self.path).path
             if path=='/api/health':
+                import ctypes
                 self.send(200,{'app':'artifact-workbench','instance':hashlib.sha256(str(ROOT).encode()).hexdigest()[:16],
-                               'frozen':bool(getattr(sys,'frozen',False))});return
+                               'frozen':bool(getattr(sys,'frozen',False)),
+                               'administrator':bool(ctypes.windll.shell32.IsUserAnAdmin()) if sys.platform=='win32' else False});return
             if path=='/api/bootstrap':self.send(200,{'token':backend.token,'instance':hashlib.sha256(str(backend.root.resolve()).encode()).hexdigest()[:16],'catalog':backend.catalog(),'draft':backend.store.latest_draft()});return
             if path=='/api/draft/latest':self.send(200,backend.store.latest_draft());return
             if path=='/api/catalog':self.send(200,backend.catalog(refresh=True));return

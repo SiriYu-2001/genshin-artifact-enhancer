@@ -6,9 +6,9 @@
 
 从 [Releases](https://github.com/SiriYu-2001/genshin-artifact-enhancer/releases) 下载 Windows x64 ZIP，完整解压到可写目录，双击 `ArtifactWorkbench.exe`。程序自动打开本地网页；不要单独移动 EXE。
 
-**扫描、强化和换装需要另行安装官方 [霜华／椰羊控制插件](https://cocogoat.work/extra/client)**，或把官方 `cocogoat-control.exe` 放到程序的 `bin/`。本发行包不转发霜华二进制。适配的 yas 与 ONNX Runtime 已随 Windows 包提供。
+**Windows ZIP 已包含霜华、适配版 yas 和 ONNX Runtime**，无需手动下载安装或启动插件。EXE 已嵌入 requireAdministrator 启动清单，双击即请求管理员授权（已提升权限时不重复提示）。若已有其他霜华／工坊任务在运行，先退出该插件或结束其任务；不要同时启动多个控制器。点击扫描后工坊会自动切换到游戏，避免按 Win 键切回游戏，因为 Win 是中断键。
 
-已有库存时，配装和资源建议不要求游戏运行或管理员权限。游戏操作会请求管理员授权；开始前切到背包圣遗物页。首次使用请先扫描、核对库存和配置，再启动培养。
+已有库存时，配装和资源建议不要求游戏运行。Windows EXE 统一在启动时请求管理员授权；游戏操作前切到背包圣遗物页。首次使用请先扫描、核对库存和配置，再启动培养。
 
 ## 功能
 

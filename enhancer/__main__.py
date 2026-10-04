@@ -11,35 +11,13 @@ from .navigation import ROOT
 from .yas_client import runtime_environment
 
 
-def ensure_controller():
-    path=ROOT/"runtime/session.json"
-    if path.exists():
-        state=json.loads(path.read_text(encoding="utf-8-sig"))
-        if state["state"]=="running":
-            return
-    powershell=shutil.which("pwsh") or shutil.which('powershell')
-    if not powershell:
-        raise RuntimeError("Windows PowerShell or PowerShell 7 is required")
-    args=["-NoProfile","-ExecutionPolicy","Bypass","-File",str(ROOT/"tools/Start-Controller.ps1"),
-          "-OrtDll",runtime_environment()["ORT_DYLIB_PATH"],"-DurationMinutes","120"]
-    result=ctypes.windll.shell32.ShellExecuteW(None,"runas",powershell,subprocess.list2cmdline(args),str(ROOT),0)
-    if result<=32:
-        raise RuntimeError("Windows administrator startup was cancelled or failed")
-    until=time.monotonic()+30
-    while time.monotonic()<until:
-        if path.exists():
-            try:
-                state=json.loads(path.read_text(encoding="utf-8-sig"))
-                if state["state"]=="running": return
-            except json.JSONDecodeError:
-                pass
-        time.sleep(.2)
-    raise RuntimeError("Administrator controller did not start")
+from .controller import ensure_controller
 
 
 def main():
     parser=argparse.ArgumentParser(description="Local yas/Frostflake artifact experiment; no LLM service")
     commands=parser.add_subparsers(dest="command",required=True)
+    commands.add_parser('controller-check',help='Verify packaged controller startup without game input')
     ui=commands.add_parser('ui',help='Open the local artifact control panel')
     ui.add_argument('--port',type=int,default=8766)
     loadout=commands.add_parser('loadout',help='Save, plan, or apply local loadouts with live OCR verification')
@@ -70,6 +48,19 @@ def main():
     commands.add_parser("stop",help="Stop the local controller")
     commands.add_parser("summary",help="Reproduce the prepared run report without game input")
     args=parser.parse_args()
+    if args.command=='controller-check':
+        ensure_controller()
+        from .controller import controller_ready,read_session
+        state=read_session(ROOT/'runtime/session.json')
+        result={'administrator':bool(ctypes.windll.shell32.IsUserAnAdmin()),
+                'controller_ready':controller_ready(state),
+                'bridge_bundled':Path(state.get('bridge_path','')).resolve()==(ROOT/'bin/cocogoat-control.exe').resolve(),
+                'game_input':False}
+        (ROOT/'runtime/controller-check.json').write_text(json.dumps(result),encoding='utf-8')
+        if not all(result[k] for k in ('administrator','controller_ready','bridge_bundled')):
+            raise RuntimeError('Packaged controller diagnostic failed')
+        print(json.dumps(result),flush=True)
+        return
     if args.command=='ui':
         from .ui_server import serve
         serve(args.port)

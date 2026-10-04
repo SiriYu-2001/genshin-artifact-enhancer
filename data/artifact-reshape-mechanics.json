@@ -1,0 +1,34 @@
+{
+  "researched_at": "2026-09-29",
+  "cost": {
+    "flower": 1,
+    "plume": 1,
+    "sands": 2,
+    "goblet": 2,
+    "circlet": 2
+  },
+  "global_progress_threshold": 6,
+  "guarantee_cycle": [
+    3,
+    3,
+    4
+  ],
+  "ordinary_guarantee": 2,
+  "pity_trigger": "after adding the current operation cost",
+  "overflow": "carry after subtracting six; community report, not tested by live consumption",
+  "fixed": [
+    "set",
+    "slot",
+    "main",
+    "substat_types",
+    "base_values",
+    "four_or_five_upgrade_events"
+  ],
+  "defined_artifact_pair": "fixed; unknown pair is deferred",
+  "official_rules_entry": "https://support.hoyoverse.com/hc/en-us/articles/50333916291353-Where-can-I-find-the-rules-for-reshaping-with-Dust-of-Enlightenment",
+  "original_reference_repo": "https://github.com/SiriYu-2001/genshin-enlightenment-selection",
+  "reference_commit": "040b7e5b90a2c6d80e1992168cc484c662f3f697",
+  "sparse_information_policy": "Enumerate compatible histories; bound unknown bases, never guess means.",
+  "execution": "advice only; no game input",
+  "nga_reference": "https://bbs.nga.cn/read.php?tid=46822657"
+}

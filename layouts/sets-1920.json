@@ -1,0 +1,232 @@
+{
+  "regions": [
+    {
+      "name": "heading",
+      "rect": [
+        139,
+        13,
+        335,
+        41
+      ]
+    },
+    {
+      "name": "apply",
+      "rect": [
+        1662,
+        990,
+        182,
+        56
+      ]
+    },
+    {
+      "name": "left_0",
+      "rect": [
+        155,
+        132,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_1",
+      "rect": [
+        155,
+        214,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_2",
+      "rect": [
+        155,
+        296,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_3",
+      "rect": [
+        155,
+        378,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_4",
+      "rect": [
+        155,
+        460,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_5",
+      "rect": [
+        155,
+        542,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_6",
+      "rect": [
+        155,
+        624,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_7",
+      "rect": [
+        155,
+        706,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_8",
+      "rect": [
+        155,
+        788,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_9",
+      "rect": [
+        155,
+        870,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_0",
+      "rect": [
+        805,
+        132,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_1",
+      "rect": [
+        805,
+        214,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_2",
+      "rect": [
+        805,
+        296,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_3",
+      "rect": [
+        805,
+        378,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_4",
+      "rect": [
+        805,
+        460,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_5",
+      "rect": [
+        805,
+        542,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_6",
+      "rect": [
+        805,
+        624,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_7",
+      "rect": [
+        805,
+        706,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_8",
+      "rect": [
+        805,
+        788,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_9",
+      "rect": [
+        805,
+        870,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "selected_set",
+      "rect": [
+        1390,
+        127,
+        460,
+        52
+      ],
+      "trim_text": true
+    }
+  ]
+}

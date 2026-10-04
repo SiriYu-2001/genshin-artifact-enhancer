@@ -1,0 +1,16 @@
+runtime/
+.tools/
+vendor/
+bin/
+dist/
+build/
+__pycache__/
+*.py[cod]
+*.sqlite*
+*.db
+*.log
+*.png
+*.jpg
+*.zip
+.env*
+node_modules/

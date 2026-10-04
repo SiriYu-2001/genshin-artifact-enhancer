@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "equipment": "protected",
+  "allocation": "priority",
+  "demands": [
+    {"id": "sandrone", "profile": "../profiles/木偶.json"},
+    {"id": "odetta", "profile": "../profiles/奥黛塔.json"}
+  ],
+  "scenarios": [["sandrone", "odetta"]],
+  "reserved_ids": []
+}

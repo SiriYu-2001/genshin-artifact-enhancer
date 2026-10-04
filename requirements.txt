@@ -1,0 +1,6 @@
+# Versions used for the Windows/Python 3.10 live experiment.
+numpy==1.23.5
+Pillow==9.3.0
+requests==2.32.3
+opencv-python==4.7.0.68
+onnxruntime==1.23.2

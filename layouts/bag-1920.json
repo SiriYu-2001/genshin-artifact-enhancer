@@ -1,0 +1,8 @@
+{
+  "regions": [
+    {"name": "page", "rect": [125, 25, 145, 45]},
+    {"name": "inventory_count", "rect": [1575, 28, 235, 40]},
+    {"name": "acquisition_order_label", "rect": [890, 117, 310, 40]},
+    {"name": "action", "rect": [1640, 985, 115, 60]}
+  ]
+}

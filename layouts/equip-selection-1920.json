@@ -1,0 +1,100 @@
+{
+  "regions": [
+    {
+      "name": "main",
+      "rect": [
+        1472,
+        217,
+        245,
+        30
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "level",
+      "rect": [
+        1443,
+        305,
+        110,
+        37
+      ]
+    },
+    {
+      "name": "sub_0",
+      "rect": [
+        1485,
+        349,
+        310,
+        30
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "sub_1",
+      "rect": [
+        1485,
+        383,
+        310,
+        30
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "sub_2",
+      "rect": [
+        1485,
+        417,
+        310,
+        30
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "sub_3",
+      "rect": [
+        1485,
+        451,
+        310,
+        30
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "set",
+      "rect": [
+        1430,
+        489,
+        380,
+        34
+      ]
+    },
+    {
+      "name": "owner",
+      "rect": [
+        1525,
+        915,
+        290,
+        40
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "action",
+      "rect": [
+        1520,
+        990,
+        100,
+        35
+      ]
+    },
+    {
+      "name": "filter",
+      "rect": [
+        140,
+        984,
+        405,
+        48
+      ]
+    }
+  ]
+}

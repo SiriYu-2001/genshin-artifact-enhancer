@@ -1,0 +1,536 @@
+{
+  "schema_version": 1,
+  "retrieved_at_utc": "2026-09-22T16:08:30.1995108Z",
+  "scope": "Ordinary 5-star artifact substat single-roll values; excludes elixir/reshape guarantee transitions",
+  "raw_data": {
+    "provider": "Dimbreath/AnimeGameData2",
+    "commit": "b061b403c8afc7bca633cf4f201edc4a3baa75fe",
+    "commit_date": "2026-09-22T09:55:58+08:00",
+    "raw_url": "https://gitlab.com/Dimbreath/AnimeGameData2/-/raw/b061b403c8afc7bca633cf4f201edc4a3baa75fe/ExcelBinOutput/ReliquaryAffixExcelConfigData.json",
+    "sha256": "ABBFCBF9B8825116378D1E04926379A4EDA2CE735652B1557CA36377E3C22BFE",
+    "probability_fields_present": false
+  },
+  "probability_sources": [
+    {
+      "id": "kqm_original_probability_thesis",
+      "url": "https://library.keqingmains.com/assets/files/ArtiSubMath-v10_1-0c25f059a10d40502b70fc546bdd2759.pdf",
+      "location": "Section 2, PDF pages 2-3; uniform four-value choice and generating function coefficient 1/4",
+      "evidence_type": "Community original mathematical analysis, not an official probability disclosure or a probability field in the client table"
+    }
+  ],
+  "ordinary_four_existing_substat_selection": {
+    "probability_each": 0.25,
+    "source": "https://keqingmains.com/misc/artifacts/#Main_Stat_Upgrades",
+    "note": "Initial creation of a new stat type has different weights; do not use uniform selection for that process."
+  },
+  "rounding": {
+    "rule": "Sum internal values before rounding for display; percentages show 1 decimal place and flat values show integer, with half-up display rounding.",
+    "source": "https://keqingmains.com/misc/artifacts/#Substats",
+    "implementation_reference": "https://github.com/frzyc/genshin-optimizer/blob/180a0a1015cb725c7570cd828eb086749960df98/libs/gi/dm/src/dm/artifact/artifactSubstatRolls.ts",
+    "caveat": "GO also models float32 accumulation and percent scaling; simply adding rounded OCR values can mismatch totals at rounding boundaries."
+  },
+  "normalization_note": "The user confirmed mean_roll_raw as the denominator: one average enhancement roll is one standard roll. 70%, 80%, 90%, 100% of max are conventional approximate tier labels; exact raw table ratios differ slightly after data quantization. A common positive display-score multiplier does not change improvement probability.",
+  "selected_normalization": "mean_roll_raw",
+  "stats": [
+    {
+      "key": "hp",
+      "name_zh": "固定生命值",
+      "prop_type": "FIGHT_PROP_HP",
+      "rarity": 5,
+      "depot_id": 501,
+      "tier_count": 4,
+      "raw_unit": "flat stat units",
+      "ui_unit": "flat stat units",
+      "max_roll_raw": 298.75,
+      "mean_roll_raw": 253.94,
+      "tiers": [
+        {
+          "affix_id": 501021,
+          "raw_value": 209.13,
+          "ui_unit_value": 209.13,
+          "single_roll_display": "209",
+          "ratio_to_max": 0.7000167364016736,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501022,
+          "raw_value": 239.0,
+          "ui_unit_value": 239.0,
+          "single_roll_display": "239",
+          "ratio_to_max": 0.8,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501023,
+          "raw_value": 268.88,
+          "ui_unit_value": 268.88,
+          "single_roll_display": "269",
+          "ratio_to_max": 0.9000167364016737,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501024,
+          "raw_value": 298.75,
+          "ui_unit_value": 298.75,
+          "single_roll_display": "299",
+          "ratio_to_max": 1.0,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        }
+      ]
+    },
+    {
+      "key": "hp_",
+      "name_zh": "生命值百分比",
+      "prop_type": "FIGHT_PROP_HP_PERCENT",
+      "rarity": 5,
+      "depot_id": 501,
+      "tier_count": 4,
+      "raw_unit": "fraction: 1.0 = 100%",
+      "ui_unit": "percentage points",
+      "max_roll_raw": 0.0583,
+      "mean_roll_raw": 0.04955,
+      "tiers": [
+        {
+          "affix_id": 501031,
+          "raw_value": 0.0408,
+          "ui_unit_value": 4.08,
+          "single_roll_display": "4.1%",
+          "ratio_to_max": 0.6998284734133792,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501032,
+          "raw_value": 0.0466,
+          "ui_unit_value": 4.66,
+          "single_roll_display": "4.7%",
+          "ratio_to_max": 0.7993138936535163,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501033,
+          "raw_value": 0.0525,
+          "ui_unit_value": 5.25,
+          "single_roll_display": "5.3%",
+          "ratio_to_max": 0.9005145797598628,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501034,
+          "raw_value": 0.0583,
+          "ui_unit_value": 5.83,
+          "single_roll_display": "5.8%",
+          "ratio_to_max": 1.0,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        }
+      ]
+    },
+    {
+      "key": "atk",
+      "name_zh": "固定攻击力",
+      "prop_type": "FIGHT_PROP_ATTACK",
+      "rarity": 5,
+      "depot_id": 501,
+      "tier_count": 4,
+      "raw_unit": "flat stat units",
+      "ui_unit": "flat stat units",
+      "max_roll_raw": 19.45,
+      "mean_roll_raw": 16.535,
+      "tiers": [
+        {
+          "affix_id": 501051,
+          "raw_value": 13.62,
+          "ui_unit_value": 13.62,
+          "single_roll_display": "14",
+          "ratio_to_max": 0.7002570694087403,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501052,
+          "raw_value": 15.56,
+          "ui_unit_value": 15.56,
+          "single_roll_display": "16",
+          "ratio_to_max": 0.8,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501053,
+          "raw_value": 17.51,
+          "ui_unit_value": 17.51,
+          "single_roll_display": "18",
+          "ratio_to_max": 0.9002570694087405,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501054,
+          "raw_value": 19.45,
+          "ui_unit_value": 19.45,
+          "single_roll_display": "19",
+          "ratio_to_max": 1.0,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        }
+      ]
+    },
+    {
+      "key": "atk_",
+      "name_zh": "攻击力百分比",
+      "prop_type": "FIGHT_PROP_ATTACK_PERCENT",
+      "rarity": 5,
+      "depot_id": 501,
+      "tier_count": 4,
+      "raw_unit": "fraction: 1.0 = 100%",
+      "ui_unit": "percentage points",
+      "max_roll_raw": 0.0583,
+      "mean_roll_raw": 0.04955,
+      "tiers": [
+        {
+          "affix_id": 501061,
+          "raw_value": 0.0408,
+          "ui_unit_value": 4.08,
+          "single_roll_display": "4.1%",
+          "ratio_to_max": 0.6998284734133792,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501062,
+          "raw_value": 0.0466,
+          "ui_unit_value": 4.66,
+          "single_roll_display": "4.7%",
+          "ratio_to_max": 0.7993138936535163,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501063,
+          "raw_value": 0.0525,
+          "ui_unit_value": 5.25,
+          "single_roll_display": "5.3%",
+          "ratio_to_max": 0.9005145797598628,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501064,
+          "raw_value": 0.0583,
+          "ui_unit_value": 5.83,
+          "single_roll_display": "5.8%",
+          "ratio_to_max": 1.0,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        }
+      ]
+    },
+    {
+      "key": "def",
+      "name_zh": "固定防御力",
+      "prop_type": "FIGHT_PROP_DEFENSE",
+      "rarity": 5,
+      "depot_id": 501,
+      "tier_count": 4,
+      "raw_unit": "flat stat units",
+      "ui_unit": "flat stat units",
+      "max_roll_raw": 23.15,
+      "mean_roll_raw": 19.674999999999997,
+      "tiers": [
+        {
+          "affix_id": 501081,
+          "raw_value": 16.2,
+          "ui_unit_value": 16.2,
+          "single_roll_display": "16",
+          "ratio_to_max": 0.6997840172786177,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501082,
+          "raw_value": 18.52,
+          "ui_unit_value": 18.52,
+          "single_roll_display": "19",
+          "ratio_to_max": 0.8,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501083,
+          "raw_value": 20.83,
+          "ui_unit_value": 20.83,
+          "single_roll_display": "21",
+          "ratio_to_max": 0.8997840172786177,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501084,
+          "raw_value": 23.15,
+          "ui_unit_value": 23.15,
+          "single_roll_display": "23",
+          "ratio_to_max": 1.0,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        }
+      ]
+    },
+    {
+      "key": "def_",
+      "name_zh": "防御力百分比",
+      "prop_type": "FIGHT_PROP_DEFENSE_PERCENT",
+      "rarity": 5,
+      "depot_id": 501,
+      "tier_count": 4,
+      "raw_unit": "fraction: 1.0 = 100%",
+      "ui_unit": "percentage points",
+      "max_roll_raw": 0.0729,
+      "mean_roll_raw": 0.061950000000000005,
+      "tiers": [
+        {
+          "affix_id": 501091,
+          "raw_value": 0.051,
+          "ui_unit_value": 5.1,
+          "single_roll_display": "5.1%",
+          "ratio_to_max": 0.6995884773662551,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501092,
+          "raw_value": 0.0583,
+          "ui_unit_value": 5.83,
+          "single_roll_display": "5.8%",
+          "ratio_to_max": 0.7997256515775033,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501093,
+          "raw_value": 0.0656,
+          "ui_unit_value": 6.5600000000000005,
+          "single_roll_display": "6.6%",
+          "ratio_to_max": 0.8998628257887518,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501094,
+          "raw_value": 0.0729,
+          "ui_unit_value": 7.290000000000001,
+          "single_roll_display": "7.3%",
+          "ratio_to_max": 1.0,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        }
+      ]
+    },
+    {
+      "key": "critRate_",
+      "name_zh": "暴击率",
+      "prop_type": "FIGHT_PROP_CRITICAL",
+      "rarity": 5,
+      "depot_id": 501,
+      "tier_count": 4,
+      "raw_unit": "fraction: 1.0 = 100%",
+      "ui_unit": "percentage points",
+      "max_roll_raw": 0.0389,
+      "mean_roll_raw": 0.033049999999999996,
+      "tiers": [
+        {
+          "affix_id": 501201,
+          "raw_value": 0.0272,
+          "ui_unit_value": 2.7199999999999998,
+          "single_roll_display": "2.7%",
+          "ratio_to_max": 0.699228791773779,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501202,
+          "raw_value": 0.0311,
+          "ui_unit_value": 3.11,
+          "single_roll_display": "3.1%",
+          "ratio_to_max": 0.7994858611825193,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501203,
+          "raw_value": 0.035,
+          "ui_unit_value": 3.5000000000000004,
+          "single_roll_display": "3.5%",
+          "ratio_to_max": 0.8997429305912598,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501204,
+          "raw_value": 0.0389,
+          "ui_unit_value": 3.8899999999999997,
+          "single_roll_display": "3.9%",
+          "ratio_to_max": 1.0,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        }
+      ]
+    },
+    {
+      "key": "critDMG_",
+      "name_zh": "暴击伤害",
+      "prop_type": "FIGHT_PROP_CRITICAL_HURT",
+      "rarity": 5,
+      "depot_id": 501,
+      "tier_count": 4,
+      "raw_unit": "fraction: 1.0 = 100%",
+      "ui_unit": "percentage points",
+      "max_roll_raw": 0.0777,
+      "mean_roll_raw": 0.06605,
+      "tiers": [
+        {
+          "affix_id": 501221,
+          "raw_value": 0.0544,
+          "ui_unit_value": 5.4399999999999995,
+          "single_roll_display": "5.4%",
+          "ratio_to_max": 0.7001287001287,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501222,
+          "raw_value": 0.0622,
+          "ui_unit_value": 6.22,
+          "single_roll_display": "6.2%",
+          "ratio_to_max": 0.8005148005148004,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501223,
+          "raw_value": 0.0699,
+          "ui_unit_value": 6.99,
+          "single_roll_display": "7.0%",
+          "ratio_to_max": 0.8996138996138996,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501224,
+          "raw_value": 0.0777,
+          "ui_unit_value": 7.7700000000000005,
+          "single_roll_display": "7.8%",
+          "ratio_to_max": 1.0,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        }
+      ]
+    },
+    {
+      "key": "eleMas",
+      "name_zh": "元素精通",
+      "prop_type": "FIGHT_PROP_ELEMENT_MASTERY",
+      "rarity": 5,
+      "depot_id": 501,
+      "tier_count": 4,
+      "raw_unit": "flat stat units",
+      "ui_unit": "flat stat units",
+      "max_roll_raw": 23.31,
+      "mean_roll_raw": 19.815,
+      "tiers": [
+        {
+          "affix_id": 501241,
+          "raw_value": 16.32,
+          "ui_unit_value": 16.32,
+          "single_roll_display": "16",
+          "ratio_to_max": 0.7001287001287002,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501242,
+          "raw_value": 18.65,
+          "ui_unit_value": 18.65,
+          "single_roll_display": "19",
+          "ratio_to_max": 0.8000858000858001,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501243,
+          "raw_value": 20.98,
+          "ui_unit_value": 20.98,
+          "single_roll_display": "21",
+          "ratio_to_max": 0.9000429000429001,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501244,
+          "raw_value": 23.31,
+          "ui_unit_value": 23.31,
+          "single_roll_display": "23",
+          "ratio_to_max": 1.0,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        }
+      ]
+    },
+    {
+      "key": "enerRech_",
+      "name_zh": "元素充能效率",
+      "prop_type": "FIGHT_PROP_CHARGE_EFFICIENCY",
+      "rarity": 5,
+      "depot_id": 501,
+      "tier_count": 4,
+      "raw_unit": "fraction: 1.0 = 100%",
+      "ui_unit": "percentage points",
+      "max_roll_raw": 0.0648,
+      "mean_roll_raw": 0.055049999999999995,
+      "tiers": [
+        {
+          "affix_id": 501231,
+          "raw_value": 0.0453,
+          "ui_unit_value": 4.53,
+          "single_roll_display": "4.5%",
+          "ratio_to_max": 0.6990740740740741,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501232,
+          "raw_value": 0.0518,
+          "ui_unit_value": 5.18,
+          "single_roll_display": "5.2%",
+          "ratio_to_max": 0.7993827160493827,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501233,
+          "raw_value": 0.0583,
+          "ui_unit_value": 5.83,
+          "single_roll_display": "5.8%",
+          "ratio_to_max": 0.8996913580246914,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        },
+        {
+          "affix_id": 501234,
+          "raw_value": 0.0648,
+          "ui_unit_value": 6.4799999999999995,
+          "single_roll_display": "6.5%",
+          "ratio_to_max": 1.0,
+          "probability": 0.25,
+          "probability_source_id": "kqm_original_probability_thesis"
+        }
+      ]
+    }
+  ]
+}

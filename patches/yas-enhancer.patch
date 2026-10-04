@@ -1,0 +1,629 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index ee11257..f5e292a 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -139,12 +139,6 @@ version = "0.22.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+ 
+-[[package]]
+-name = "base64ct"
+-version = "1.8.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "55248b47b0caf0546f7988906588779981c43bb1bc9d0c44087278f80cdb44ba"
+-
+ [[package]]
+ name = "bit-set"
+ version = "0.5.3"
+@@ -494,16 +488,6 @@ dependencies = [
+  "windows-sys 0.59.0",
+ ]
+ 
+-[[package]]
+-name = "der"
+-version = "0.7.10"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
+-dependencies = [
+- "pem-rfc7468",
+- "zeroize",
+-]
+-
+ [[package]]
+ name = "deranged"
+ version = "0.5.4"
+@@ -924,7 +908,7 @@ dependencies = [
+  "futures-core",
+  "futures-sink",
+  "futures-util",
+- "http 0.2.12",
++ "http",
+  "indexmap",
+  "slab",
+  "tokio",
+@@ -993,17 +977,6 @@ dependencies = [
+  "itoa",
+ ]
+ 
+-[[package]]
+-name = "http"
+-version = "1.3.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f4a85d31aea989eead29a3aaf9e1115a180df8282431156e533de47660892565"
+-dependencies = [
+- "bytes",
+- "fnv",
+- "itoa",
+-]
+-
+ [[package]]
+ name = "http-body"
+ version = "0.4.6"
+@@ -1011,7 +984,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7ceab25649e9960c0311ea418d17bee82c0dcec1bd053b5f9a66e265a693bed2"
+ dependencies = [
+  "bytes",
+- "http 0.2.12",
++ "http",
+  "pin-project-lite",
+ ]
+ 
+@@ -1038,7 +1011,7 @@ dependencies = [
+  "futures-core",
+  "futures-util",
+  "h2",
+- "http 0.2.12",
++ "http",
+  "http-body",
+  "httparse",
+  "httpdate",
+@@ -1816,6 +1789,7 @@ version = "2.0.0-rc.10"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1fa7e49bd669d32d7bc2a15ec540a527e7764aec722a45467814005725bcd721"
+ dependencies = [
++ "libloading",
+  "ndarray",
+  "ort-sys",
+  "smallvec 2.0.0-alpha.10",
+@@ -1828,11 +1802,7 @@ version = "2.0.0-rc.10"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "e2aba9f5c7c479925205799216e7e5d07cc1d4fa76ea8058c60a9a30f6a4e890"
+ dependencies = [
+- "flate2",
+  "pkg-config",
+- "sha2",
+- "tar",
+- "ureq",
+ ]
+ 
+ [[package]]
+@@ -1882,15 +1852,6 @@ version = "0.1.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "35fb2e5f958ec131621fdd531e9fc186ed768cbe395337403ae56c17a74c68ec"
+ 
+-[[package]]
+-name = "pem-rfc7468"
+-version = "0.7.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "88b39c9bfcfc231068454382784bb460aae594343fb030d46e9f50a645418412"
+-dependencies = [
+- "base64ct",
+-]
+-
+ [[package]]
+ name = "percent-encoding"
+ version = "2.3.2"
+@@ -2265,7 +2226,7 @@ dependencies = [
+  "futures-core",
+  "futures-util",
+  "h2",
+- "http 0.2.12",
++ "http",
+  "http-body",
+  "hyper",
+  "hyper-tls",
+@@ -2277,7 +2238,7 @@ dependencies = [
+  "once_cell",
+  "percent-encoding",
+  "pin-project-lite",
+- "rustls-pemfile 1.0.4",
++ "rustls-pemfile",
+  "serde",
+  "serde_json",
+  "serde_urlencoded",
+@@ -2335,24 +2296,6 @@ dependencies = [
+  "base64 0.21.7",
+ ]
+ 
+-[[package]]
+-name = "rustls-pemfile"
+-version = "2.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "dce314e5fee3f39953d46bb63bb8a46d40c2f8fb7cc5a3b6cab2bde9721d6e50"
+-dependencies = [
+- "rustls-pki-types",
+-]
+-
+-[[package]]
+-name = "rustls-pki-types"
+-version = "1.12.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "229a4a4c221013e7e1f1a043678c5cc39fe5171437c88fb47151a21e6f5b5c79"
+-dependencies = [
+- "zeroize",
+-]
+-
+ [[package]]
+ name = "rustversion"
+ version = "1.0.22"
+@@ -2591,17 +2534,6 @@ dependencies = [
+  "windows-sys 0.59.0",
+ ]
+ 
+-[[package]]
+-name = "socks"
+-version = "0.3.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f0c3dbbd9ae980613c6dd8e28a9407b50509d3803b57624d5dfe8315218cd58b"
+-dependencies = [
+- "byteorder",
+- "libc",
+- "winapi",
+-]
+-
+ [[package]]
+ name = "stable_deref_trait"
+ version = "1.2.0"
+@@ -3147,37 +3079,6 @@ version = "0.2.11"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
+ 
+-[[package]]
+-name = "ureq"
+-version = "3.1.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "99ba1025f18a4a3fc3e9b48c868e9beb4f24f4b4b1a325bada26bd4119f46537"
+-dependencies = [
+- "base64 0.22.1",
+- "der",
+- "log",
+- "native-tls",
+- "percent-encoding",
+- "rustls-pemfile 2.2.0",
+- "rustls-pki-types",
+- "socks",
+- "ureq-proto",
+- "utf-8",
+- "webpki-root-certs",
+-]
+-
+-[[package]]
+-name = "ureq-proto"
+-version = "0.5.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "60b4531c118335662134346048ddb0e54cc86bd7e81866757873055f0e38f5d2"
+-dependencies = [
+- "base64 0.22.1",
+- "http 1.3.1",
+- "httparse",
+- "log",
+-]
+-
+ [[package]]
+ name = "url"
+ version = "2.5.7"
+@@ -3190,12 +3091,6 @@ dependencies = [
+  "serde",
+ ]
+ 
+-[[package]]
+-name = "utf-8"
+-version = "0.7.6"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
+-
+ [[package]]
+ name = "utf8_iter"
+ version = "1.0.4"
+@@ -3499,15 +3394,6 @@ dependencies = [
+  "wasm-bindgen",
+ ]
+ 
+-[[package]]
+-name = "webpki-root-certs"
+-version = "1.0.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4e4ffd8df1c57e87c325000a3d6ef93db75279dc3a231125aac571650f22b12a"
+-dependencies = [
+- "rustls-pki-types",
+-]
+-
+ [[package]]
+ name = "weezl"
+ version = "0.1.10"
+@@ -4132,12 +4018,6 @@ dependencies = [
+  "synstructure",
+ ]
+ 
+-[[package]]
+-name = "zeroize"
+-version = "1.8.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
+-
+ [[package]]
+ name = "zerotrie"
+ version = "0.2.2"
+diff --git a/yas-application/src/bin/yas_artifact.rs b/yas-application/src/bin/yas_artifact.rs
+index 2fd340d..f38deac 100644
+--- a/yas-application/src/bin/yas_artifact.rs
++++ b/yas-application/src/bin/yas_artifact.rs
+@@ -25,7 +25,7 @@ pub fn main() {
+     match application.run() {
+         Err(e) => {
+             error!("error: {:?}", e);
+-            press_any_key_to_continue();
++            std::process::exit(1);
+         },
+         _ => {
+             press_any_key_to_continue();
+diff --git a/yas-genshin/src/application/artifact_scanner.rs b/yas-genshin/src/application/artifact_scanner.rs
+index effa547..cf7fe75 100644
+--- a/yas-genshin/src/application/artifact_scanner.rs
++++ b/yas-genshin/src/application/artifact_scanner.rs
+@@ -28,7 +28,8 @@ impl ArtifactScannerApplication {
+         cmd = <ExportArtifactConfig as Args>::augment_args_for_update(cmd);
+         cmd = <GenshinArtifactScannerConfig as Args>::augment_args_for_update(cmd);
+         cmd = <GenshinRepositoryScannerLogicConfig as Args>::augment_args_for_update(cmd);
+-        cmd
++        cmd.arg(clap::Arg::new("read-current").long("read-current").action(clap::ArgAction::SetTrue))
++            .arg(clap::Arg::new("observe-layout").long("observe-layout").num_args(1))
+     }
+ 
+     fn get_window_info_repository() -> WindowInfoRepository {
+@@ -86,7 +87,30 @@ impl ArtifactScannerApplication {
+             game_info.clone()
+         )?;
+ 
+-        let result = scanner.scan()?;
++        if let Some(layout) = arg_matches.get_one::<String>("observe-layout") {
++            return scanner.observe_layout(layout);
++        }
++        let result = if arg_matches.get_flag("read-current") { scanner.read_current()? } else { scanner.scan()? };
++        std::fs::write("observed-artifacts.json", serde_json::to_vec_pretty(&result)?)?;
++        let mut observations = Vec::new();
++        for raw in &result {
++            if let Ok(artifact) = GenshinArtifact::try_from(raw) {
++                let mut stats = Vec::new();
++                for (index, stat) in [&artifact.sub_stat_1, &artifact.sub_stat_2, &artifact.sub_stat_3, &artifact.sub_stat_4].iter().enumerate() {
++                    if let Some(stat) = stat {
++                        let key = stat.name.to_good();
++                        let value = if key.ends_with('_') { stat.value * 100.0 } else { stat.value };
++                        stats.push(serde_json::json!({"key": key, "value": value, "pending": raw.pending[index]}));
++                    }
++                }
++                observations.push(serde_json::json!({"index": raw.index, "name": raw.name,
++                    "setKey": artifact.set_name.to_good(), "slotKey": artifact.slot.to_good(),
++                    "mainStatKey": artifact.main_stat.name.to_good(), "level": raw.level,
++                    "rarity": raw.star, "lock": raw.lock, "equip_raw": raw.equip,
++                    "special": raw.special, "substats": stats}));
++            }
++        }
++        std::fs::write("enhancer-artifacts.json", serde_json::to_vec_pretty(&observations)?)?;
+         let artifacts = result
+             .iter()
+             .flat_map(GenshinArtifact::try_from)
+diff --git a/yas-genshin/src/scanner/artifact_scanner/artifact_scanner.rs b/yas-genshin/src/scanner/artifact_scanner/artifact_scanner.rs
+index 05bfb85..a20309b 100644
+--- a/yas-genshin/src/scanner/artifact_scanner/artifact_scanner.rs
++++ b/yas-genshin/src/scanner/artifact_scanner/artifact_scanner.rs
+@@ -177,9 +177,9 @@ impl GenshinArtifactScanner {
+     pub fn get_item_count(&self) -> Result<i32> {
+         let count = self.scanner_config.number;
+ 
+-        let max_count = Self::MAX_COUNT as i32;
+         if count > 0 {
+-            return Ok(max_count.min(count));
++            anyhow::ensure!(count <= 10000, "Unreasonable scan count");
++            return Ok(count);
+         }
+ 
+         let im = self.capturer.capture_relative_to(
+@@ -201,16 +201,41 @@ impl GenshinArtifactScanner {
+ 
+         info!("物品信息: {}", s);
+ 
+-        let filtered: String = s.chars().filter(|c| c.is_ascii_digit() || *c == '/').collect();
+-        let count_part = filtered.split('/').next().unwrap_or("");
+-        
+-        if let Ok(v) = count_part.parse::<usize>() {
+-            info!("识别到数量: {}", v);
+-            Ok((v as i32).min(max_count))
+-        } else {
+-            info!("无法解析数量，使用默认最大值: {}", max_count);
+-            Ok(max_count)
++        let re = regex::Regex::new(r"^\s*(?:圣遗物)?\s*(\d+)\s*/\s*(\d+)\s*$")?;
++        let caps = re.captures(&s).ok_or_else(|| anyhow::anyhow!("Unreadable inventory count: {:?}", s))?;
++        let count = caps[1].parse::<i32>()?;
++        let capacity = caps[2].parse::<i32>()?;
++        // Temporary overflow above the displayed capacity is possible.
++        anyhow::ensure!(count > 0 && count <= 10000 && capacity > 0 && capacity <= 10000, "Invalid inventory count/capacity");
++        Ok(count)
++    }
++
++    pub fn read_current(&self) -> Result<Vec<GenshinArtifactScanResult>> {
++        let worker = ArtifactScannerWorker::new(self.window_info.clone(), self.scanner_config.clone())?;
++        // Lock is not inferred from a potentially unrelated grid position.
++        let item = SendItem { panel_image: self.capture_panel()?, star: self.get_star()?, list_image: None };
++        Ok(vec![worker.scan_item_image(item, false, 1)?])
++    }
++
++    pub fn observe_layout(&self, layout_path: &str) -> Result<()> {
++        let image = self.capturer.capture_rect(self.game_info.window)?;
++        image.save("game.png")?;
++        let layout: serde_json::Value = serde_json::from_slice(&std::fs::read(layout_path)?)?;
++        let model = Self::get_image_to_text("ppocrv5")?;
++        let mut texts = serde_json::Map::new();
++        for region in layout["regions"].as_array().ok_or_else(|| anyhow::anyhow!("Missing regions"))? {
++            let name = region["name"].as_str().ok_or_else(|| anyhow::anyhow!("Missing region name"))?;
++            let rect: Vec<u32> = region["rect"].as_array().ok_or_else(|| anyhow::anyhow!("Missing rect"))?.iter()
++                .map(|v| v.as_u64().map(|n| n as u32).ok_or_else(|| anyhow::anyhow!("Invalid coordinate")))
++                .collect::<Result<_>>()?;
++            anyhow::ensure!(rect.len() == 4 && rect[2] > 0 && rect[3] > 0 && rect[0] + rect[2] <= image.width() && rect[1] + rect[3] <= image.height(), "Region outside game client");
++            let crop = image::imageops::crop_imm(&image, rect[0], rect[1], rect[2], rect[3]).to_image();
++            texts.insert(name.to_string(), serde_json::Value::String(model.image_to_text(&crop, false)?));
+         }
++        let value = serde_json::json!({"window": {"left": self.game_info.window.left, "top": self.game_info.window.top,
++            "width": self.game_info.window.width, "height": self.game_info.window.height}, "text": texts});
++        std::fs::write("observation.json", serde_json::to_vec_pretty(&value)?)?;
++        Ok(())
+     }
+ 
+     pub fn scan(&mut self) -> Result<Vec<GenshinArtifactScanResult>> {
+@@ -220,6 +245,7 @@ impl GenshinArtifactScanner {
+         let (tx, rx) = mpsc::channel::<Option<SendItem>>();
+         // let token = self.cancellation_token.clone();
+         let count = self.get_item_count()?;
++        std::fs::write("scan-count.json", serde_json::to_vec(&serde_json::json!({"requested": count}))?)?;
+         let worker = ArtifactScannerWorker::new(
+             self.window_info.clone(),
+             self.scanner_config.clone(),
+@@ -366,4 +392,4 @@ impl GenshinArtifactScanner {
+             }
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/yas-genshin/src/scanner/artifact_scanner/artifact_scanner_worker.rs b/yas-genshin/src/scanner/artifact_scanner/artifact_scanner_worker.rs
+index aab7132..061bbcc 100644
+--- a/yas-genshin/src/scanner/artifact_scanner/artifact_scanner_worker.rs
++++ b/yas-genshin/src/scanner/artifact_scanner/artifact_scanner_worker.rs
+@@ -49,7 +49,7 @@ pub struct ArtifactScannerWorker {
+ }
+ 
+ impl ArtifactScannerWorker {
+-    fn get_model_for_backend(backend: &str) -> Result<Box<dyn ImageToText<RgbImage> + Send + Sync>> {
++    pub fn get_model_for_backend(backend: &str) -> Result<Box<dyn ImageToText<RgbImage> + Send + Sync>> {
+         match backend.to_lowercase().as_str() {
+             "paddle" | "ppocrv5" => {
+                 let model_bytes = include_bytes!("./models/PP-OCRv5_mobile_rec.onnx");
+@@ -79,25 +79,17 @@ impl ArtifactScannerWorker {
+     }
+ 
+     fn parse_level(s: &str) -> Result<i32> {
+-        // 自动容错：将 o/O 替换为 0，只保留数字和正负号
+-        let replaced = s.replace(['o', 'O'], "0");
+-        let cleaned: String = replaced.chars().filter(|c| c.is_ascii_digit() || *c == '-' || *c == '+').collect();
+-        let cleaned = cleaned.trim_start_matches('+');
+-        if cleaned.is_empty() {
+-            return Ok(0);
+-        }
+-        match cleaned.parse::<i32>() {
+-            Ok(level) => Ok(level),
+-            Err(e) => {
+-                log::warn!("parse_level 解析失败: 原始内容='{}', o/O->0后='{}', 错误: {}，自动返回0", s, cleaned, e);
+-                Ok(0)
+-            }
+-        }
++        let trimmed = s.trim();
++        let number = trimmed.strip_prefix('+').unwrap_or(trimmed);
++        anyhow::ensure!(!number.is_empty() && number.chars().all(|c| c.is_ascii_digit()), "Unreadable level: {:?}", s);
++        let level = number.parse::<i32>()?;
++        anyhow::ensure!((0..=20).contains(&level), "Level out of range: {}", level);
++        Ok(level)
+     }
+ 
+     /// 处理词条文本，去除“（”及其后内容，如果包含“（”则视为包含预览词条，标记为 true
+     fn process_stat_text(s: &str) -> (String, bool) {
+-        match s.find('（') {
++        match s.find(['（', '(']) {
+             Some(idx) => (s[..idx].trim_end().to_string(), true),
+             None => (s.trim().to_string(), false),
+         }
+@@ -229,7 +221,7 @@ impl ArtifactScannerWorker {
+     }
+ 
+     /// Parse the captured result (of type SendItem) to a scanned artifact
+-    fn scan_item_image(&self, item: SendItem, lock: bool, artifact_index: usize) -> Result<GenshinArtifactScanResult> {
++    pub fn scan_item_image(&self, item: SendItem, lock: bool, artifact_index: usize) -> Result<GenshinArtifactScanResult> {
+         let image = &item.panel_image;
+ 
+         let str_title = {
+@@ -260,6 +252,8 @@ impl ArtifactScannerWorker {
+                 main_stat_value: String::new(),
+                 sub_stat: [String::new(), String::new(), String::new(), String::new()],
+                 level: 0,
++                pending: [false; 4],
++                special: false,
+                 equip: String::new(),
+                 star: item.star as i32,
+                 lock,
+@@ -362,13 +356,9 @@ impl ArtifactScannerWorker {
+                 str_sub_stat2,
+                 str_sub_stat3,
+             ],
+-            level: {
+-                let mut lv = Self::parse_level(&str_level)?;
+-                if has_unactivated {
+-                    lv = 4;
+-                }
+-                lv
+-            },
++            level: Self::parse_level(&str_level)?,
++            pending: [u0, u1, u2, u3],
++            special: shift_offset != 0.0,
+             equip: str_equip,
+             star: item.star as i32,
+             lock,
+diff --git a/yas-genshin/src/scanner/artifact_scanner/scan_result.rs b/yas-genshin/src/scanner/artifact_scanner/scan_result.rs
+index 5978571..b0847d3 100644
+--- a/yas-genshin/src/scanner/artifact_scanner/scan_result.rs
++++ b/yas-genshin/src/scanner/artifact_scanner/scan_result.rs
+@@ -1,4 +1,4 @@
+-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
++#[derive(Debug, Hash, Clone, PartialEq, Eq, serde::Serialize)]
+ pub struct GenshinArtifactScanResult {
+     pub name: String,
+     pub main_stat_name: String,
+@@ -6,6 +6,8 @@ pub struct GenshinArtifactScanResult {
+     pub sub_stat: [String; 4],
+     pub equip: String,
+     pub level: i32,
++    pub pending: [bool; 4],
++    pub special: bool,
+     pub star: i32,
+     pub lock: bool,
+     pub index: usize,  // 圣遗物扫描顺序索引
+diff --git a/yas/Cargo.toml b/yas/Cargo.toml
+index 6cadce7..1437f4c 100644
+--- a/yas/Cargo.toml
++++ b/yas/Cargo.toml
+@@ -37,7 +37,7 @@ console = "0.15"
+ paste = "1.0"
+ prettytable-rs = "^0.10"
+ bytesize = {version = "1.2.0", features = ["serde"]}
+-ort = { version = "2.0.0-rc.10", optional = true }
++ort = { version = "=2.0.0-rc.10", optional = true, default-features = false, features = ["std", "ndarray", "load-dynamic"] }
+ ndarray = { version = "0.16", optional = true }
+ tract-onnx = { version = "0.22", optional = true }
+ 
+diff --git a/yas/src/capture/winapi_capturer.rs b/yas/src/capture/winapi_capturer.rs
+index 30789c6..f0e06c1 100644
+--- a/yas/src/capture/winapi_capturer.rs
++++ b/yas/src/capture/winapi_capturer.rs
+@@ -11,83 +11,40 @@ use crate::positioning::{Pos, Rect};
+ 
+ // BGRA
+ unsafe fn unsafe_capture(rect: Rect<i32>) -> Result<Vec<u8>> {
+-    let dc_window: HDC = GetDC(null_mut());
+-
+-    let dc_mem: HDC = CreateCompatibleDC(dc_window);
+-    if dc_mem.is_null() {
+-        return Err(anyhow!("CreateCompatibleDC failed"));
+-    }
+-
+-    let hbm: HBITMAP = CreateCompatibleBitmap(dc_window, rect.width, rect.height);
+-    if hbm.is_null() {
+-        return Err(anyhow!("CreateCompatibleBitmap failed"));
+-    }
+-
+-    SelectObject(dc_mem, hbm as *mut c_void);
+-
+-    let result = BitBlt(
+-        dc_mem,
+-        0,
+-        0,
+-        rect.width,
+-        rect.height,
+-        dc_window,
+-        rect.left,
+-        rect.top,
+-        SRCCOPY
+-    );
+-    if result == 0 {
+-        return Err(anyhow!("BitBlt failed"));
++    if rect.width <= 0 || rect.height <= 0 || rect.width > 16384 || rect.height > 16384 {
++        return Err(anyhow!("Invalid capture dimensions"));
+     }
+-
+-    let mut bitmap: BITMAP = BITMAP {
+-        bmBits: 0 as *mut c_void,
+-        bmBitsPixel: 0,
+-        bmPlanes: 0,
+-        bmWidthBytes: 0,
+-        bmHeight: 0,
+-        bmWidth: 0,
+-        bmType: 0,
+-    };
+-    GetObjectW(
+-        hbm as *mut c_void,
+-        size_of::<BITMAP>() as i32,
+-        (&mut bitmap) as *mut BITMAP as *mut c_void
+-    );
+-
+-    let mut bi: BITMAPINFOHEADER = BITMAPINFOHEADER {
+-        biSize: size_of::<BITMAPINFOHEADER>() as u32,
+-        biWidth: bitmap.bmWidth,
+-        biHeight: bitmap.bmHeight,
+-        biPlanes: 1,
+-        biBitCount: 32,
+-        biCompression: BI_RGB,
+-        biSizeImage: 0,
+-        biXPelsPerMeter: 0,
+-        biYPelsPerMeter: 0,
+-        biClrUsed: 0,
+-        biClrImportant: 0,
+-    };
+-
+-    let bitmap_size: usize = (((bitmap.bmWidth * 32 + 31) / 32) * 4 * bitmap.bmHeight) as usize;
+-    let mut buffer: Vec<u8> = vec![0; bitmap_size];
+-
+-    GetDIBits(
+-        dc_window,
+-        hbm,
+-        0,
+-        bitmap.bmHeight as u32,
+-        // lpbitmap,
+-        buffer.as_mut_ptr() as *mut c_void,
+-        (&mut bi) as *mut BITMAPINFOHEADER as *mut BITMAPINFO,
+-        DIB_RGB_COLORS
+-    );
+-
++    let dc_window = GetDC(null_mut());
++    if dc_window.is_null() { return Err(anyhow!("GetDC failed")); }
++    let dc_mem = CreateCompatibleDC(dc_window);
++    if dc_mem.is_null() { ReleaseDC(null_mut(), dc_window); return Err(anyhow!("CreateCompatibleDC failed")); }
++    let hbm = CreateCompatibleBitmap(dc_window, rect.width, rect.height);
++    if hbm.is_null() { DeleteDC(dc_mem); ReleaseDC(null_mut(), dc_window); return Err(anyhow!("CreateCompatibleBitmap failed")); }
++    let original = SelectObject(dc_mem, hbm as *mut c_void);
++    let result = (|| {
++        if original.is_null() || original as isize == -1 { return Err(anyhow!("SelectObject failed")); }
++        if BitBlt(dc_mem, 0, 0, rect.width, rect.height, dc_window, rect.left, rect.top, SRCCOPY) == 0 {
++            return Err(anyhow!("BitBlt failed"));
++        }
++        // GetDIBits requires the bitmap not to be selected in a DC.
++        SelectObject(dc_mem, original);
++        let mut info: BITMAPINFO = std::mem::zeroed();
++        info.bmiHeader.biSize = size_of::<BITMAPINFOHEADER>() as u32;
++        info.bmiHeader.biWidth = rect.width;
++        info.bmiHeader.biHeight = rect.height;
++        info.bmiHeader.biPlanes = 1;
++        info.bmiHeader.biBitCount = 32;
++        info.bmiHeader.biCompression = BI_RGB;
++        let mut buffer = vec![0u8; rect.width as usize * rect.height as usize * 4];
++        let rows = GetDIBits(dc_window, hbm, 0, rect.height as u32, buffer.as_mut_ptr() as *mut c_void, &mut info, DIB_RGB_COLORS);
++        if rows != rect.height { return Err(anyhow!("GetDIBits returned incomplete image")); }
++        Ok(buffer)
++    })();
++    if !original.is_null() && original as isize != -1 { SelectObject(dc_mem, original); }
+     DeleteObject(hbm as *mut c_void);
+-    DeleteObject(dc_mem as *mut c_void);
++    DeleteDC(dc_mem);
+     ReleaseDC(null_mut(), dc_window);
+-
+-    Ok(buffer)
++    result
+ }
+ 
+ pub struct WinapiCapturer;

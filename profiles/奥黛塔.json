@@ -1,0 +1,49 @@
+{
+  "name": "示例 · 奥黛塔 · 炉火融炼之心",
+  "character": "奥黛塔",
+  "character_aliases": [
+    "奥黛塔"
+  ],
+  "set_key": "HeartOfTheFurnace",
+  "set_label": "炉火融炼之心",
+  "set_requirement": 4,
+  "main_stats": {
+    "flower": [
+      "hp"
+    ],
+    "plume": [
+      "atk"
+    ],
+    "sands": [
+      "atk_"
+    ],
+    "goblet": [
+      "atk_"
+    ],
+    "circlet": [
+      "critDMG_"
+    ]
+  },
+  "weights": {
+    "critRate_": 1,
+    "critDMG_": 1,
+    "atk_": 0.75,
+    "atk": 0.25,
+    "enerRech_": 0,
+    "eleMas": 0.5,
+    "hp": 0,
+    "hp_": 0,
+    "def": 0,
+    "def_": 0
+  },
+  "normalization": "mean_roll",
+  "threshold": 0.05,
+  "allowed_equipped_characters": [
+    "*"
+  ],
+  "auto_equip": false,
+  "artifact_crit_rate_cap": 47,
+  "target_rarity": 5,
+  "reserved_ids": [],
+  "baseline_level": 20
+}

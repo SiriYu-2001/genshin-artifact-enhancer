@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "equipment": "borrow",
+  "allocation": "priority",
+  "demands": [
+    {"id": "sandrone", "profile": "../profiles/木偶.json"},
+    {"id": "odetta", "profile": "../profiles/奥黛塔.json"}
+  ],
+  "teams": {
+    "队伍一": ["sandrone"],
+    "队伍二": ["odetta"]
+  },
+  "scenarios": [{"name": "两队同时备齐", "teams": ["队伍一", "队伍二"]}],
+  "reserved_ids": []
+}

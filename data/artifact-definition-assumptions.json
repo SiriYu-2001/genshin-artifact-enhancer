@@ -1,0 +1,63 @@
+{
+  "researched_at": "2026-09-29",
+  "scope": "Read-only recommendation model. Does not authorize crafting, extraction, enhancement or fodder use.",
+  "cost": {
+    "flower": 1,
+    "plume": 1,
+    "sands": 2,
+    "goblet": 4,
+    "circlet": 3
+  },
+  "per_set_per_version_limit": 2,
+  "limit_source": "https://www.hoyolab.com/article/42525064",
+  "limit_crosscheck": "https://wiki.biligame.com/ys/祝圣之霜",
+  "limit_note": "Luna III change from one to two. Remaining quota and definition availability must be provided or read separately; this advisor did not inspect them.",
+  "guarantee": {
+    "minimum_total_selected_upgrades": 2,
+    "transition": "If remaining_upgrade_events <= required_hits - hits_so_far, select uniformly among the two defined stats; otherwise uniformly among all four.",
+    "source": "https://www.bilibili.com/opus/1048482086298583049",
+    "evidence": "Original community empirical report, 2025-03-26; total-hit guarantee, not two upgrades to each selected stat."
+  },
+  "creation_four_line_probability": {
+    "default": "1/3",
+    "status": "Community model assumption, not confirmed official probability disclosure",
+    "alternative": 0.34,
+    "default_source": "https://www.brandonfowler.me/artifact-odds/assumptions/",
+    "alternative_source": "https://www.bilibili.com/opus/1048482086298583049",
+    "workbench_exact_fraction": "1/3",
+    "workbench_override_allowed": false,
+    "verification_note": "2026-09-29: user confirmed 1/3; formula regression distinguishes 2/3 three-line + 1/3 four-line definition mixture from domain 1/5 four-line drops. 0.34 retained only as a historical sensitivity comparison."
+  },
+  "remaining_stat_generation": {
+    "method": "Weighted sequential sampling without replacement, excluding main and both defined substats",
+    "weights": {
+      "hp": 6,
+      "atk": 6,
+      "def": 6,
+      "hp_": 4,
+      "atk_": 4,
+      "def_": 4,
+      "eleMas": 4,
+      "enerRech_": 4,
+      "critRate_": 3,
+      "critDMG_": 3
+    },
+    "source": "https://www.brandonfowler.me/artifact-odds/assumptions/",
+    "status": "Community artifact generation model applied to undefined slots; not official server implementation verification"
+  },
+  "roll_tiers": "Reuse five-star-substat-tiers.json and enhancer/model.py; four equal-probability raw tiers per roll.",
+  "main_stat_drop_source": "https://keqingmains.com/misc/artifacts/",
+  "not_modelled_in_single_definition_report": [
+    "Dust of Enlightenment",
+    "Future farming",
+    "Adaptive second craft",
+    "Simultaneous multi-character allocation",
+    "Unfinished existing inventory potential",
+    "Gameplay damage beyond configured score"
+  ],
+  "domain_four_line_probability": {
+    "value": "1/5",
+    "source": "https://keqingmains.com/misc/artifacts/",
+    "note": "Domain drops only; never used for artifact definition."
+  }
+}

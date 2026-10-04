@@ -1,0 +1,141 @@
+{
+  "regions": [
+    {
+      "name": "title",
+      "rect": [
+        138,
+        23,
+        510,
+        46
+      ]
+    },
+    {
+      "name": "level",
+      "rect": [
+        1170,
+        124,
+        215,
+        59
+      ],
+      "backend": "yas",
+      "remove_gold": true
+    },
+    {
+      "name": "exp",
+      "rect": [
+        1710,
+        130,
+        174,
+        56
+      ]
+    },
+    {
+      "name": "material_count",
+      "rect": [
+        1410,
+        688,
+        270,
+        51
+      ]
+    },
+    {
+      "name": "confirm",
+      "rect": [
+        1695,
+        991,
+        113,
+        53
+      ]
+    },
+    {
+      "name": "material_filter",
+      "rect": [
+        1176,
+        745,
+        370,
+        51
+      ]
+    },
+    {
+      "name": "stage_add",
+      "rect": [
+        1660,
+        745,
+        210,
+        51
+      ]
+    },
+    {
+      "name": "exp_tight",
+      "rect": [
+        1772,
+        140,
+        103,
+        35
+      ]
+    },
+    {
+      "name": "exp_wide",
+      "rect": [
+        1695,
+        136,
+        185,
+        36
+      ]
+    },
+    {
+      "name": "exp_high",
+      "rect": [
+        1720,
+        132,
+        162,
+        48
+      ]
+    },
+    {
+      "name": "material_count_check",
+      "rect": [
+        1390,
+        692,
+        319,
+        44
+      ]
+    },
+    {
+      "name": "sub_value_0",
+      "rect": [
+        1768,
+        306,
+        116,
+        43
+      ]
+    },
+    {
+      "name": "sub_value_1",
+      "rect": [
+        1768,
+        359,
+        116,
+        43
+      ]
+    },
+    {
+      "name": "sub_value_2",
+      "rect": [
+        1768,
+        412,
+        116,
+        43
+      ]
+    },
+    {
+      "name": "sub_value_3",
+      "rect": [
+        1768,
+        465,
+        116,
+        43
+      ]
+    }
+  ]
+}

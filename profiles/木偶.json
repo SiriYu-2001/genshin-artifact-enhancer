@@ -1,0 +1,50 @@
+{
+  "name": "示例 · 木偶 · 影中沉凝的幻灭",
+  "character": "木偶",
+  "set_key": "DisenchantmentInDeepShadow",
+  "set_label": "影中沉凝的幻灭",
+  "set_requirement": 4,
+  "main_stats": {
+    "flower": [
+      "hp"
+    ],
+    "plume": [
+      "atk"
+    ],
+    "sands": [
+      "atk_"
+    ],
+    "goblet": [
+      "atk_"
+    ],
+    "circlet": [
+      "critDMG_"
+    ]
+  },
+  "weights": {
+    "critRate_": 1,
+    "critDMG_": 1,
+    "atk_": 0.75,
+    "atk": 0.25,
+    "enerRech_": 0.75,
+    "eleMas": 0.5,
+    "hp": 0,
+    "hp_": 0,
+    "def": 0,
+    "def_": 0
+  },
+  "normalization": "mean_roll",
+  "threshold": 0.05,
+  "allowed_equipped_characters": [
+    "*"
+  ],
+  "auto_equip": false,
+  "artifact_crit_rate_cap": 44.8,
+  "target_rarity": 5,
+  "character_aliases": [
+    "木偶",
+    "桑多涅"
+  ],
+  "reserved_ids": [],
+  "baseline_level": 20
+}

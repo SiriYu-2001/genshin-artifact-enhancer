@@ -1,0 +1,924 @@
+{
+  "regions": [
+    {
+      "name": "left_112",
+      "rect": [
+        155,
+        112,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_130",
+      "rect": [
+        155,
+        130,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_148",
+      "rect": [
+        155,
+        148,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_166",
+      "rect": [
+        155,
+        166,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_184",
+      "rect": [
+        155,
+        184,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_202",
+      "rect": [
+        155,
+        202,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_220",
+      "rect": [
+        155,
+        220,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_238",
+      "rect": [
+        155,
+        238,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_256",
+      "rect": [
+        155,
+        256,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_274",
+      "rect": [
+        155,
+        274,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_292",
+      "rect": [
+        155,
+        292,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_310",
+      "rect": [
+        155,
+        310,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_328",
+      "rect": [
+        155,
+        328,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_346",
+      "rect": [
+        155,
+        346,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_364",
+      "rect": [
+        155,
+        364,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_382",
+      "rect": [
+        155,
+        382,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_400",
+      "rect": [
+        155,
+        400,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_418",
+      "rect": [
+        155,
+        418,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_436",
+      "rect": [
+        155,
+        436,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_454",
+      "rect": [
+        155,
+        454,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_472",
+      "rect": [
+        155,
+        472,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_490",
+      "rect": [
+        155,
+        490,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_508",
+      "rect": [
+        155,
+        508,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_526",
+      "rect": [
+        155,
+        526,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_544",
+      "rect": [
+        155,
+        544,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_562",
+      "rect": [
+        155,
+        562,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_580",
+      "rect": [
+        155,
+        580,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_598",
+      "rect": [
+        155,
+        598,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_616",
+      "rect": [
+        155,
+        616,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_634",
+      "rect": [
+        155,
+        634,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_652",
+      "rect": [
+        155,
+        652,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_670",
+      "rect": [
+        155,
+        670,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_688",
+      "rect": [
+        155,
+        688,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_706",
+      "rect": [
+        155,
+        706,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_724",
+      "rect": [
+        155,
+        724,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_742",
+      "rect": [
+        155,
+        742,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_760",
+      "rect": [
+        155,
+        760,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_778",
+      "rect": [
+        155,
+        778,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_796",
+      "rect": [
+        155,
+        796,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_814",
+      "rect": [
+        155,
+        814,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_832",
+      "rect": [
+        155,
+        832,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_850",
+      "rect": [
+        155,
+        850,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_868",
+      "rect": [
+        155,
+        868,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_886",
+      "rect": [
+        155,
+        886,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_904",
+      "rect": [
+        155,
+        904,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "left_922",
+      "rect": [
+        155,
+        922,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_112",
+      "rect": [
+        805,
+        112,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_130",
+      "rect": [
+        805,
+        130,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_148",
+      "rect": [
+        805,
+        148,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_166",
+      "rect": [
+        805,
+        166,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_184",
+      "rect": [
+        805,
+        184,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_202",
+      "rect": [
+        805,
+        202,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_220",
+      "rect": [
+        805,
+        220,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_238",
+      "rect": [
+        805,
+        238,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_256",
+      "rect": [
+        805,
+        256,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_274",
+      "rect": [
+        805,
+        274,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_292",
+      "rect": [
+        805,
+        292,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_310",
+      "rect": [
+        805,
+        310,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_328",
+      "rect": [
+        805,
+        328,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_346",
+      "rect": [
+        805,
+        346,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_364",
+      "rect": [
+        805,
+        364,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_382",
+      "rect": [
+        805,
+        382,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_400",
+      "rect": [
+        805,
+        400,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_418",
+      "rect": [
+        805,
+        418,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_436",
+      "rect": [
+        805,
+        436,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_454",
+      "rect": [
+        805,
+        454,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_472",
+      "rect": [
+        805,
+        472,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_490",
+      "rect": [
+        805,
+        490,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_508",
+      "rect": [
+        805,
+        508,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_526",
+      "rect": [
+        805,
+        526,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_544",
+      "rect": [
+        805,
+        544,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_562",
+      "rect": [
+        805,
+        562,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_580",
+      "rect": [
+        805,
+        580,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_598",
+      "rect": [
+        805,
+        598,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_616",
+      "rect": [
+        805,
+        616,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_634",
+      "rect": [
+        805,
+        634,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_652",
+      "rect": [
+        805,
+        652,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_670",
+      "rect": [
+        805,
+        670,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_688",
+      "rect": [
+        805,
+        688,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_706",
+      "rect": [
+        805,
+        706,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_724",
+      "rect": [
+        805,
+        724,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_742",
+      "rect": [
+        805,
+        742,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_760",
+      "rect": [
+        805,
+        760,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_778",
+      "rect": [
+        805,
+        778,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_796",
+      "rect": [
+        805,
+        796,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_814",
+      "rect": [
+        805,
+        814,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_832",
+      "rect": [
+        805,
+        832,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_850",
+      "rect": [
+        805,
+        850,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_868",
+      "rect": [
+        805,
+        868,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_886",
+      "rect": [
+        805,
+        886,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_904",
+      "rect": [
+        805,
+        904,
+        400,
+        44
+      ],
+      "trim_text": true
+    },
+    {
+      "name": "right_922",
+      "rect": [
+        805,
+        922,
+        400,
+        44
+      ],
+      "trim_text": true
+    }
+  ]
+}

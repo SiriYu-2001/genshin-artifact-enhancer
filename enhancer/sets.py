@@ -1,0 +1,20 @@
+"""GOOD identifiers and simplified Chinese game filter labels."""
+SET_LABELS = {
+    'ArchaicPetra':'悠古的磐岩','HeartOfDepth':'沉沦之心','BlizzardStrayer':'冰风迷途的勇士',
+    'RetracingBolide':'逆飞的流星','NoblesseOblige':'昔日宗室之仪','GladiatorsFinale':'角斗士的终幕礼',
+    'MaidenBeloved':'被怜爱的少女','ViridescentVenerer':'翠绿之影','Lavawalker':'渡过烈火的贤人',
+    'CrimsonWitchOfFlames':'炽烈的炎之魔女','Thundersoother':'平息鸣雷的尊者','ThunderingFury':'如雷的盛怒',
+    'BloodstainedChivalry':'染血的骑士道','WanderersTroupe':'流浪大地的乐团',
+    'PaleFlame':'苍白之火','TenacityOfTheMillelith':'千岩牢固','EmblemOfSeveredFate':'绝缘之旗印',
+    'ShimenawasReminiscence':'追忆之注连','HuskOfOpulentDreams':'华馆梦醒形骸记','OceanHuedClam':'海染砗磲',
+    'VermillionHereafter':'辰砂往生录','EchoesOfAnOffering':'来歆余响','DeepwoodMemories':'深林的记忆',
+    'GildedDreams':'饰金之梦','FlowerOfParadiseLost':'乐园遗落之花','DesertPavilionChronicle':'沙上楼阁史话',
+    'NymphsDream':'水仙之梦','VourukashasGlow':'花海甘露之光','MarechausseeHunter':'逐影猎人',
+    'GoldenTroupe':'黄金剧团','SongOfDaysPast':'昔时之歌','NighttimeWhispersInTheEchoingWoods':'回声之林夜话',
+    'FragmentOfHarmonicWhimsy':'谐律异想断章','UnfinishedReverie':'未竟的遐思',
+    'ScrollOfTheHeroOfCinderCity':'烬城勇者绘卷','ObsidianCodex':'黑曜秘典',
+    'LongNightsOath':'长夜之誓','FinaleOfTheDeepGalleries':'深廊终曲','SpinMoonSerenade':'纺月的夜歌',
+    'RealmMirrorNight':'穹境示现之夜','AubadeOfMorningstarAndMoon':'晨星与月的晓歌',
+    'ADayCarvedFromRisingWinds':'风起之日','HeavensGift':'天之美赐',
+    'DisenchantmentInDeepShadow':'影中沉凝的幻灭','ScarletProof':'血红之证','HeartOfTheFurnace':'炉火融炼之心',
+}

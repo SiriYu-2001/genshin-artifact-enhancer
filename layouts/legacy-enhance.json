@@ -1,0 +1,8 @@
+{"regions":[
+  {"name":"mora","rect":[1082,45,110,30]},
+  {"name":"level","rect":[780,112,95,39]},
+  {"name":"exp","rect":[1140,116,116,37]},
+  {"name":"material_count","rect":[940,488,180,34]},
+  {"name":"mora_cost","rect":[851,691,160,39]},
+  {"name":"confirm","rect":[1130,690,75,35]}
+]}

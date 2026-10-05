@@ -11,6 +11,11 @@ from .batch import save
 
 
 def fresh_scan():
+    from .good_backend import scan_inventory
+    return scan_inventory()
+
+
+def legacy_fresh_scan():
     nav=Navigation()
     try:
         games=[w for w in nav.api('GET','/api/windows') if w['title']=='原神' and w['classname']=='UnityWndClass']
@@ -67,8 +72,6 @@ def start(profile_path,ownership,scan=None):
         old=json.loads(manifest.read_text(encoding='utf-8'))
         if old['status'] not in ('finished','finished-with-deferred','stopped') or any((Path(p)/'pending.json').exists() for p in old['runs']):
             raise RuntimeError('Previous batch must finish before starting a new character')
-    from .__main__ import ensure_controller
-    ensure_controller()
     scan=Path(scan) if scan else fresh_scan()
     report=create_report(scan,profile)
     if not report['baseline_usable']:raise RuntimeError('Fresh inventory baseline is not usable')

@@ -398,6 +398,11 @@ class EquipDriver:
 
 
 def apply(library_path,ids,scan,updates=None,policy='strict'):
+    from .good_backend import apply_loadouts
+    return apply_loadouts(library_path,ids,scan,updates,policy)
+
+
+def legacy_apply(library_path,ids,scan,updates=None,policy='strict'):
     plan=plan_file(library_path,ids,scan,updates,policy)
     if plan['status']=='blocked':raise RuntimeError('Saved loadout plan has conflicts or missing artifacts')
     from .__main__ import ensure_controller

@@ -6,3 +6,5 @@
 - Python, NumPy, Pillow, OpenCV, requests, ONNX Runtime, urllib3, certifi, charset-normalizer, idna and PyInstaller retain their respective licenses; the Windows package includes license files under third-party/. PyInstaller uses its bootloader distribution exception.
 - Rust dependency sources, checksums and their original license files accompany the matching yas source release. Original project license does not replace dependency licenses.
 - Game names and data remain the property of their respective owners. No account inventory, game screenshots or user configuration database is included.
+
+- GOODScanner backend: https://github.com/Anyrainel/GOODScanner, v2026.09.30 / bffc4aad040eac0bb5f10c8b0b2ef86121fb29b5. Uses its genshin_scanner and yas_core libraries (GPL-2.0-or-later). The Workbench headless host adds local authorization, cancellation, five-star scan scope, strict matching and non-mutating verification/preflight; no capture feature is built. Matching source and dependencies accompany the Release. Patch entry: tools/patch_goodscanner.py.

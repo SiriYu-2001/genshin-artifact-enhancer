@@ -2,7 +2,7 @@
 
 完整解压 Release 的 Windows x64 ZIP 后双击 ArtifactWorkbench.exe，Windows 会请求管理员授权。本地端口从 8766 起寻找空闲端口，自动打开正确网页。不要将服务暴露到公网。
 
-Windows ZIP 自带霜华、yas 与 ONNX Runtime。无需自行安装或启动插件；控制器会在管理员权限下自动启动。点击扫描后程序会自动切回游戏，不要按 Win 中断键切换窗口。
+Windows ZIP 自带 GOODScanner、霜华、yas 与 ONNX Runtime。扫描与穿戴使用 GOODScanner；逐阶段强化仍使用兼容执行器。无需自行安装或启动插件，子进程继承主程序的管理员权限。点击扫描后程序会自动切回游戏，不要按 Win 中断键切换窗口。
 
 配置、库存、配装、截图和任务记录保存于 runtime。升级保留该目录。数据管理页可删除、恢复或彻底删除配置；历史最多保留 20 版。正常截图在网页工作任务结束后清理，错误和未决动作的证据保留。
 
@@ -40,3 +40,7 @@ python -m unittest discover -s tests -v 只运行离线单元测试。tools/veri
 `tools/verify_release_scan.py --archive <ZIP>` 从新的解压目录经网页 API 发起扫描。`tools/verify_release_equip.py` 接受显式指定的配装库、历史扫描目录、配装 ID 和备用花索引，在新目录测试临时换装、恢复方案及幂等复核。这些开发验收脚本需要从管理员终端运行 Python；被测试的发行程序不需要。测试数据与凭据仅写入忽略的 runtime，不随发行包公开。用户中断会记为未完成，不能当作完整流程通过。
 
 管理员启动后可用 `ArtifactWorkbench.exe controller-check` 检查包内控制器连接，结果在 runtime/controller-check.json；此命令不操作游戏。
+
+## GOODScanner 后台
+
+默认扫描和穿戴使用固定上游 bffc4aad040eac0bb5f10c8b0b2ef86121fb29b5 的后台适配版，补丁见 tools/patch_goodscanner.py。已有完整相应源码树时执行 `cargo build --release --locked -p genshin_scanner --bin workbench_goodscanner`，主程序构建时用 `--goodscanner-bin` 指定产物。后台与命名映射均随包提供，运行时不要求另开 GOODScanner GUI。普通序贯强化暂保留兼容执行器；扫描和穿戴不依赖霜华。新增后台验证命令通过网页“识别与运行 → 检查 GOODScanner 连接”使用。

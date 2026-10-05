@@ -86,10 +86,11 @@ try:
     assert evidence['jobs'][0]['changes']>=1,'No actual equipment change was tested'
     assert evidence['jobs'][1]['changes']>=1,'Restoration did not change the temporary flower'
     assert evidence['jobs'][2]['changes']==0,'Repeated loadout should not trigger additional equipment changes'
-    session=json.loads((runtime/'session.json').read_text(encoding='utf-8-sig'))
-    assert Path(session['bridge_path']).resolve()==app/'bin/cocogoat-control.exe'
-    assert session['yasHash'].lower()==manifest['files']['vendor/yas/target/release/yas_artifact.exe']
-    evidence.update(status='passed',bridge_from_package=True,yas_from_package=True,consuming_actions=0,restored_saved_loadout=True)
+    backend=json.loads((runtime/'goodscanner/server.json').read_text(encoding='utf-8'))
+    assert Path(backend['exe_path']).resolve()==app/'bin/goodscanner/workbench_goodscanner.exe'
+    assert backend['exe_hash']==manifest['files']['bin/goodscanner/workbench_goodscanner.exe']
+    assert not (runtime/'session.json').exists() and not (runtime/'yas-service').exists()
+    evidence.update(status='passed',goodscanner_from_package=True,consuming_actions=0,restored_saved_loadout=True)
     print(json.dumps({k:v for k,v in evidence.items() if k!='app'},ensure_ascii=True),flush=True)
 except Exception as exc:
     evidence.update(status='failed',error=str(exc));print(json.dumps({'status':'failed','error':str(exc)},ensure_ascii=True),flush=True);raise

@@ -43,7 +43,8 @@ class HotkeyTests(unittest.TestCase):
             self.assertTrue(hit.wait(2))
             self.assertTrue(hotkey.last_win_active)
             # Dispatch a synthetic Win transition to our callback, not the desktop.
-            hit.clear();hotkey.win_transition(0x5B,0x0100)
+            hit.clear();hotkey.win_transition(0x5B,0x0101)
+            hotkey.win_transition(0x5B,0x0100)
             self.assertTrue(hit.wait(2))
         finally:hotkey.close()
         self.assertFalse(hotkey.registered)

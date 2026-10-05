@@ -6,9 +6,9 @@
 
 从 [Releases](https://github.com/SiriYu-2001/genshin-artifact-enhancer/releases) 下载 Windows x64 ZIP，完整解压到可写目录，双击 `ArtifactWorkbench.exe`。程序自动打开本地网页；不要单独移动 EXE。
 
-**Windows ZIP 已包含霜华、适配版 yas 和 ONNX Runtime**，无需手动下载安装或启动插件。EXE 已嵌入 requireAdministrator 启动清单，双击即请求管理员授权（已提升权限时不重复提示）。若已有其他霜华／工坊任务在运行，先退出该插件或结束其任务；不要同时启动多个控制器。点击扫描后工坊会自动切换到游戏，避免按 Win 键切回游戏，因为 Win 是中断键。
+**Windows ZIP 已包含 GOODScanner 后台、强化兼容读取器、霜华和 ONNX Runtime**，无需手动下载安装或启动插件。EXE 已嵌入 requireAdministrator 启动清单，双击即请求管理员授权（已提升权限时不重复提示）。若已有其他霜华／工坊任务在运行，先退出该插件或结束其任务；不要同时启动多个控制器。点击扫描后工坊会自动切换到游戏，避免按 Win 键切回游戏，因为 Win 是中断键。
 
-已有库存时，配装和资源建议不要求游戏运行。Windows EXE 统一在启动时请求管理员授权；游戏操作前切到背包圣遗物页。首次使用先在“库存导入”导入 GOODScanner／莫娜 JSON，或选择扫描，再到“角色与预设”确认规则。无需通过配置页底部寻找扫描入口。
+已有库存时，配装和资源建议不要求游戏运行。Windows EXE 统一在启动时请求管理员授权；扫描使用 GOODScanner 的 OCR；穿戴使用它的装备接口并另做属性与归属复核。逐阶段强化暂时保留兼容读取／霜华执行器。游戏操作前切到背包圣遗物页。首次使用先在“库存导入”导入 GOODScanner／莫娜 JSON，或选择扫描，再到“角色与预设”确认规则。无需通过配置页底部寻找扫描入口。
 
 ## 导入优先的使用流程
 
@@ -58,7 +58,7 @@ python -m venv .venv
 .venv/Scripts/python.exe -m enhancer ui
 ```
 
-计算模块可直接运行。游戏功能需要适配版 yas、ONNX Runtime 和霜华。详见 [Windows 构建与依赖](docs/Windows便携版.md)。
+计算模块可直接运行。扫描与换装需要包内适配版 GOODScanner；逐阶段强化仍需要适配版 yas、ONNX Runtime 和霜华。详见 [Windows 构建与依赖](docs/Windows便携版.md)。
 
 ```powershell
 python -m unittest discover -s tests -v

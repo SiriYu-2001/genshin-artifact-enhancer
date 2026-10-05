@@ -39,7 +39,7 @@ def public_report(data):
         result=public_report(data['report']);result['status']=data.get('status',result.get('status'))
         if data.get('equipment'):result['equipment']=public_report(data['equipment']).get('equipment',[])
         return result
-    keys=('status','scores','items','confirmations','conflicts','shared_items','transfers','blocked_demands','error','scan_directory')
+    keys=('status','scores','items','confirmations','conflicts','shared_items','transfers','blocked_demands','error','scan_directory','backend','revision','health','game_input')
     result={k:data[k] for k in keys if k in data}
     if 'loadouts' in data:
         result['equipment']=[{'id':r['id'],'character':r['character'],'verified_slots':len(r.get('verified',[])),
@@ -181,7 +181,8 @@ class Backend:
         if not refresh and self._catalog_cache and time.monotonic()-self._catalog_time<15:return self._catalog_cache
         manifests=[read(p) for p in [self.runtime/'active-batch.json',*self.runtime.glob('previous-batch-*.json')]]
         by_scan={}
-        paths=set(self.runtime.glob('controller-*/job-*/enhancer-artifacts.json'))|set(self.runtime.glob('imports/import-*/enhancer-artifacts.json'))
+        paths=(set(self.runtime.glob('controller-*/job-*/enhancer-artifacts.json'))|set(self.runtime.glob('imports/import-*/enhancer-artifacts.json'))
+               |set(self.runtime.glob('goodscanner/scans/scan-*/enhancer-artifacts.json')))
         for state in manifests:
             if not state:continue
             scan=Path(state.get('scan_directory',''));updates=Path(state.get('directory',''))/'inventory-updates.json'
@@ -201,16 +202,21 @@ class Backend:
             modified=max(path.stat().st_mtime,update.stat().st_mtime if update else 0)
             source=read(path.parent/'snapshot-source.json')
             imported=read(path.parent/'import-info.json')
+            goodscan=read(path.parent/'goodscanner-info.json')
             self.snapshots[identifier]={'id':identifier,'path':str(path.parent.resolve()),'updates':str(update) if update else None,
                 'count':count,'five_star':sum(a.get('rarity')==5 for a in raw),'date':datetime.fromtimestamp(modified).strftime('%m-%d %H:%M'),
                 'ownership_stale':bool(equip_time>modified or source),'label':imported['label'] if imported else path.parent.name,'derived':bool(source),
-                'source':'import' if imported else 'scan','import_summary':imported['summary'] if imported else None}
+                'source':'import' if imported else 'scan','engine':'GOODScanner' if goodscan else None,
+                'import_summary':imported['summary'] if imported else None}
+            if goodscan:self.snapshots[identifier]['label']='GOODScanner · 五星库存'
         profiles=[{'id':p.stem,'data':read(p)} for p in (self.root/'profiles').glob('*.json')]
         library=read(self.runtime/'loadouts/library.json',{'loadouts':{}})
         saved=[{'id':identifier,'name':revs[-1]['name'],'character':revs[-1]['character'],'revision':revs[-1]['revision'],
                 'items':revs[-1]['items']} for identifier,revs in library.get('loadouts',{}).items() if revs]
         from .import_inventory import DATA
         result={'profiles':profiles,'sets':SET_LABELS,'main_options':MAINS,'means':{k:float(v) for k,v in MEANS.items()},
+                'engines':{'scan':'GOODScanner','equipment':'GOODScanner','enhancement':'yas / 霜华兼容执行器',
+                           'installed':(self.root/'bin/goodscanner/workbench_goodscanner.exe').is_file()},
                 'characters':sorted(set(DATA['characters'].values())),
                 'presets':self.store.presets(),
                 'snapshots':[{k:v for k,v in s.items() if k not in ('path','updates')} for s in self.snapshots.values()],
@@ -260,7 +266,7 @@ class Backend:
         with self.lock:
             if self.process and self.process.poll() is None:raise ValueError('已有任务运行中，请先等待完成或停止')
             kind=payload.get('kind')
-            if kind not in ('scan','preview','start','resume','equip','elixir','dust'):raise ValueError('未知操作')
+            if kind not in ('scan','preview','start','resume','equip','elixir','dust','backend-check'):raise ValueError('未知操作')
             request={'kind':kind}
             if kind in ('preview','start','elixir','dust'):
                 config=self.config_path(payload.get('config_id'));data=self.store.config(payload['config_id'])

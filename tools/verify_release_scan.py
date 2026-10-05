@@ -79,13 +79,16 @@ try:
     raw=json.loads((scan/'enhancer-artifacts.json').read_text(encoding='utf-8-sig'))
     count=json.loads((scan/'scan-count.json').read_text(encoding='utf-8-sig'))['requested']
     assert len(raw)==count and {x['index'] for x in raw}==set(range(1,count+1))
-    session=json.loads((app/'runtime/session.json').read_text(encoding='utf-8-sig'))
-    assert Path(session['bridge_path']).resolve()==app/'bin/cocogoat-control.exe'
-    assert session['yasHash'].lower()==manifest['files']['vendor/yas/target/release/yas_artifact.exe']
-    actions=[json.loads(line).get('action') for line in (app/'runtime/navigation.jsonl').read_text(encoding='utf-8').splitlines()]
-    evidence.update(status='passed',recognized=count,five_star=sum(x['rarity']==5 for x in raw),
-                    complete_positions=True,bridge_from_package=True,yas_from_package=True,
-                    navigation_actions=actions,consuming_actions=0)
+    coverage=json.loads((scan/'coverage.json').read_text(encoding='utf-8'))
+    assert coverage['complete'] and coverage['termination']=='Exhausted'
+    assert coverage['visited']==coverage['expected']==coverage['five_star']+coverage['skipped_lower_rarity']
+    assert coverage['accepted']==coverage['five_star']==count and not coverage['unknown_rarity'] and not coverage['missed']
+    backend=json.loads((app/'runtime/goodscanner/server.json').read_text(encoding='utf-8'))
+    assert Path(backend['exe_path']).resolve()==app/'bin/goodscanner/workbench_goodscanner.exe'
+    assert backend['exe_hash']==manifest['files']['bin/goodscanner/workbench_goodscanner.exe']
+    assert not (app/'runtime/session.json').exists() and not (app/'runtime/yas-service').exists()
+    evidence.update(status='passed',recognized=count,five_star=count,coverage=coverage,
+                    complete_positions=True,goodscanner_from_package=True,consuming_actions=0)
     print(json.dumps({k:v for k,v in evidence.items() if k not in ('app','navigation_actions')},ensure_ascii=True),flush=True)
 except Exception as exc:
     evidence.update(status='failed',error=str(exc));print(json.dumps({'status':'failed','error':str(exc)},ensure_ascii=True),flush=True)

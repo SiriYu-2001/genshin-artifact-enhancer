@@ -34,9 +34,7 @@ def start(config,scan=None):
         previous=read(manifest)
         if previous['status'] not in ('finished','finished-with-deferred') or any((Path(p)/'pending.json').exists() for p in previous['runs']):
             raise RuntimeError('Finish or resume the existing run before starting a campaign')
-    from .__main__ import ensure_controller
     from .workflow import fresh_scan
-    ensure_controller()
     scan=Path(scan) if scan else fresh_scan()
     inventory,names,coverage=load_scan(scan)
     if not coverage['complete']:raise RuntimeError('Incomplete inventory scan')

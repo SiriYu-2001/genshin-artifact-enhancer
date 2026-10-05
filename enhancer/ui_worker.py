@@ -9,15 +9,14 @@ from .batch import save
 from .ui_config import materialize_snapshot,validate
 
 
-def main():
+def _main():
     request=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
     output=Path(request['output']);kind=request['kind']
     job_started=time.time();data=None
     try:
         if kind=='scan':
-            from .__main__ import ensure_controller
             from .workflow import fresh_scan
-            ensure_controller();scan=fresh_scan()
+            scan=fresh_scan()
             result={'status':'completed','scan_directory':str(scan)}
         elif kind=='resume':
             from .__main__ import ensure_controller
@@ -31,6 +30,11 @@ def main():
                 from .finish_equip import apply_finished
                 result['equipment']=apply_finished(state,json.loads(policy.read_text(encoding='utf-8')).get('scene'))
                 save(policy,{'enabled':False,'status':'verified'})
+        elif kind=='backend-check':
+            from .good_backend import ensure_backend,REVISION
+            client=ensure_backend()
+            result={'status':'completed','backend':'GOODScanner','revision':REVISION,'game_input':False,
+                    'health':client.request('GET','/health')}
         elif kind in ('elixir','dust'):
             if kind=='elixir':from .elixir_report import calculate
             else:from .dust_report import calculate
@@ -83,6 +87,22 @@ def main():
                 if kind=='start' and data and data.get('auto_equip_after') and state.get('started',0)>=job_started:
                     save(Path(state['directory'])/'auto-equip-policy.json',{'enabled':True,'scene':data.get('equip_scene')})
         save(output,{'status':'failed','error':str(exc)})
+        raise
+
+
+def main():
+    request=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+    if request['kind'] not in ('scan','start','resume','equip','backend-check'):
+        return _main()
+    from .game_lease import GameLease
+    try:
+        with GameLease():
+            from .good_backend import prepare_game_job
+            prepare_game_job(ROOT)
+            return _main()
+    except Exception as exc:
+        output=Path(request['output'])
+        if not output.exists():save(output,{'status':'failed','error':str(exc)})
         raise
 
 

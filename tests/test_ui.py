@@ -1,4 +1,5 @@
 from copy import deepcopy
+from contextlib import nullcontext
 from http.server import ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -34,9 +35,24 @@ class UIConfigTests(unittest.TestCase):
             save(root/'runtime/active-batch.json',{'status':'running','current':'scan:1'})
             req=root/'request.json';save(req,{'kind':'resume','output':str(root/'result.json')})
             with patch.object(ui_worker,'ROOT',root),patch.object(ui_worker.sys,'argv',['worker',str(req)]),\
+                 patch('enhancer.game_lease.GameLease',return_value=nullcontext()),\
                  patch('enhancer.__main__.ensure_controller'),patch('enhancer.batch.main',side_effect=RuntimeError('read failed')):
                 with self.assertRaises(RuntimeError):ui_worker.main()
             self.assertEqual(json.loads((root/'runtime/active-batch.json').read_text())['status'],'needs-attention')
+
+    def test_busy_game_lease_rejects_new_job_without_changing_existing_batch(self):
+        from enhancer import ui_worker
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'runtime').mkdir()
+            save(root/'runtime/active-batch.json',{'status':'running','current':'previous-job'})
+            req=root/'request.json';save(req,{'kind':'resume','output':str(root/'result.json')})
+            with patch.object(ui_worker,'ROOT',root),patch.object(ui_worker.sys,'argv',['worker',str(req)]),\
+                 patch('enhancer.game_lease.GameLease',side_effect=RuntimeError('another worker is active')),\
+                 patch.object(ui_worker,'_main') as action:
+                with self.assertRaisesRegex(RuntimeError,'another worker'):ui_worker.main()
+                action.assert_not_called()
+            self.assertEqual(json.loads((root/'runtime/active-batch.json').read_text())['status'],'running')
+            self.assertEqual(json.loads((root/'result.json').read_text())['status'],'failed')
     def test_compile_roundtrip_and_numeric_hyperparameters(self):
         d=config();d['demands'][0]['profile']['artifact_crit_rate_cap']=47
         with TemporaryDirectory() as tmp:

@@ -18,15 +18,17 @@ def main():
     parser.add_argument('--output',type=Path)
     parser.add_argument('--yas-bin-dir',type=Path,default=ROOT/'vendor/yas/target/release')
     parser.add_argument('--frostflake',type=Path,default=ROOT/'bin/cocogoat-control.exe')
+    parser.add_argument('--goodscanner-bin',type=Path,default=ROOT/'bin/goodscanner/workbench_goodscanner.exe')
     args=parser.parse_args()
     args.yas_bin_dir=args.yas_bin_dir.resolve()
     args.frostflake=args.frostflake.resolve()
+    args.goodscanner_bin=args.goodscanner_bin.resolve()
     out=(args.output or ROOT/'dist'/datetime.now().strftime('%Y%m%d-%H%M%S')).resolve()
     if out.exists():raise RuntimeError('Use a new output directory; existing user data must never be removed')
     out.mkdir(parents=True)
     import onnxruntime
     ort=Path(onnxruntime.__file__).parent/'capi/onnxruntime.dll'
-    for p in (ort,args.frostflake,args.yas_bin_dir/'yas_artifact.exe',args.yas_bin_dir/'yas_readonly.exe'):
+    for p in (ort,args.frostflake,args.goodscanner_bin,args.yas_bin_dir/'yas_artifact.exe',args.yas_bin_dir/'yas_readonly.exe'):
         if not p.is_file():raise FileNotFoundError(p)
     command=[sys.executable,'-m','PyInstaller','--onedir','--contents-directory','.',
              '--name','ArtifactWorkbench','--console','--hide-console','hide-early','--noupx','--uac-admin',
@@ -36,14 +38,19 @@ def main():
         command+=['--exclude-module',excluded]
     for folder in ('web','layouts','data','profiles','campaigns'):
         command+=['--add-data',str(ROOT/folder)+':'+folder]
-    for name in ('Start-Controller.ps1','Start-ControllerBootstrap.ps1','patch_yas.py','yas_readonly.rs','Build-Yas.ps1'):
+    for name in ('Start-Controller.ps1','Start-ControllerBootstrap.ps1','patch_yas.py','yas_readonly.rs','Build-Yas.ps1','patch_goodscanner.py','workbench_goodscanner.rs'):
         command+=['--add-data',str(ROOT/'tools'/name)+':tools']
     for name in ('yas_artifact.exe','yas_readonly.exe'):
         command+=['--add-binary',str(args.yas_bin_dir/name)+':vendor/yas/target/release']
-    command+=['--add-binary',str(ort)+':bin','--add-binary',str(args.frostflake)+':bin',str(ROOT/'desktop.py')]
+    command+=['--add-binary',str(ort)+':bin','--add-binary',str(args.frostflake)+':bin',
+              '--add-binary',str(args.goodscanner_bin)+':bin/goodscanner',str(ROOT/'desktop.py')]
     with (out/'build.log').open('w',encoding='utf-8') as log:
         subprocess.run(command,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
     app=out/'ArtifactWorkbench'
+    # Child executable has a different application directory: carry its VC DLLs locally.
+    for name in ('VCRUNTIME140.dll','VCRUNTIME140_1.dll','MSVCP140.dll','MSVCP140_1.dll'):
+        if not (app/name).is_file():raise FileNotFoundError('Missing bundled runtime: '+name)
+        shutil.copy2(app/name,app/'bin/goodscanner'/name)
     # Preserve our source and relevant build patches; no inventory, tokens or images.
     source=app/'source';(source/'enhancer').mkdir(parents=True)
     for p in (ROOT/'enhancer').glob('*.py'):shutil.copy2(p,source/'enhancer'/p.name)
@@ -70,7 +77,7 @@ def main():
         if (ROOT/name).exists():shutil.copy2(ROOT/name,app/name)
     if (ROOT/'licenses').exists():shutil.copytree(ROOT/'licenses',licenses/'upstream')
     (licenses/'SOURCES.txt').write_text('Project and matching yas source archive:\nhttps://github.com/SiriYu-2001/genshin-artifact-enhancer/releases\nyas upstream: https://github.com/1803233552/yas\nCommit: 614245fde088667216b80ff2133a7a44ebeb4d1f\nModified yas source and dependencies are provided as a separate Release asset.\nFrostflake is bundled unmodified; upstream: https://github.com/YuehaiTeam/frostflake\nSee THIRD_PARTY_NOTICES.md.\n',encoding='utf-8')
-    (app/'开始使用.txt').write_text('圣遗物工坊 · Windows 便携预览版\n\n完整解压后双击 ArtifactWorkbench.exe，自动打开本地网页。不需要安装 Python 或 Agent。不要只复制 EXE。\n配置与扫描数据存入同目录 runtime，请备份整个 runtime。请放在有写权限的文件夹。\n已包含霜华、适配版 yas 和 ONNX Runtime，不需要额外下载安装。\n无需手动开启霜华：工坊会启动包内副本。若已有其他霜华在运行，请退出后重试。\n双击 ArtifactWorkbench.exe 时 Windows 会请求管理员授权；允许后进入工坊。\n游戏适配：1920×1080、简体中文，从背包圣遗物界面开始。点击扫描后由程序自动切回游戏，不要按 Win 键（这是中断键）。\n永不消耗五星圣遗物作为强化素材。霜/尘只提供建议。\n任务运行时按左/右Win键或网页显示的备用快捷键中断，也可点击紧急中断。\n升级保留 runtime；不要公开上传使用后的整个目录。\n',encoding='utf-8-sig')
+    (app/'开始使用.txt').write_text('圣遗物工坊 · Windows 便携预览版\n\n完整解压后双击 ArtifactWorkbench.exe，自动打开本地网页。不需要安装 Python 或 Agent。不要只复制 EXE。\n配置与扫描数据存入同目录 runtime，请备份整个 runtime。请放在有写权限的文件夹。\n已包含 GOODScanner 后台、强化兼容读取器、霜华和 ONNX Runtime，不需要额外下载安装。\n扫描与换装使用 GOODScanner；逐阶段强化暂用兼容执行器。无需手动开启任何插件。\n双击 ArtifactWorkbench.exe 时 Windows 会请求管理员授权；允许后进入工坊。\n游戏适配：1920×1080、简体中文，从背包圣遗物界面开始。点击扫描后由程序自动切回游戏，不要按 Win 键（这是中断键）。\n永不消耗五星圣遗物作为强化素材。霜/尘只提供建议。\n任务运行时按左/右Win键或网页显示的备用快捷键中断，也可点击紧急中断。\n升级保留 runtime；不要公开上传使用后的整个目录。\n',encoding='utf-8-sig')
     files=[p for p in app.rglob('*') if p.is_file()]
     assert not (app/'runtime').exists()
     manifest={'build':datetime.now().isoformat(),'python':sys.version,'pyinstaller':metadata.version('PyInstaller'),

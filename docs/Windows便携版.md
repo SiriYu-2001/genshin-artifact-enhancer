@@ -1,46 +1,41 @@
 # Windows 便携版与源码构建
 
-完整解压 Release 的 Windows x64 ZIP 后双击 ArtifactWorkbench.exe，Windows 会请求管理员授权。本地端口从 8766 起寻找空闲端口，自动打开正确网页。不要将服务暴露到公网。
+普通用户只下载 Release 的 `ArtifactWorkbench-v0.1.4-windows-x64.zip`，完整解压到有写权限的目录，双击 `ArtifactWorkbench.exe` 并允许 Windows 管理员提示。网页会自动打开。不要只复制 EXE。
 
-Windows ZIP 自带 GOODScanner、霜华、yas 与 ONNX Runtime。扫描与穿戴使用 GOODScanner；逐阶段强化仍使用兼容执行器。无需自行安装或启动插件，子进程继承主程序的管理员权限。点击扫描后程序会自动切回游戏，不要按 Win 中断键切换窗口。
+Windows 包已包含修改版 GOODScanner、内嵌 OCR 模型、离线游戏映射、ONNX Runtime、Python 和所需运行库；兼容用 yas／霜华文件也随包提供。无需另行下载插件、Python、Node、模型或 Agent，也无需手动启动 GOODScanner GUI。扫描、强化和穿戴统一使用包内 GOODScanner，子进程继承主程序权限。支持 Windows x64、1920×1080、简体中文。
 
-配置、库存、配装、截图和任务记录保存于 runtime。升级保留该目录。数据管理页可删除、恢复或彻底删除配置；历史最多保留 20 版。正常截图在网页工作任务结束后清理，错误和未决动作的证据保留。
+## 使用顺序
 
-## 构建适配版 yas
+1. 在“库存导入”选择 GOOD／莫娜 JSON，或进入游戏“背包 → 圣遗物”后扫描。默认扫描当前筛选；扫描全部会清空筛选。
+2. 在“角色与预设”填写主属性、评分、暴击计分封顶及圣遗物额外充能下限。
+3. 先计算配装，再按需强化或穿戴。霜／尘页只提供建议，不消耗资源。
 
-本项目固定上游 https://github.com/1803233552/yas 的提交 `614245fde088667216b80ff2133a7a44ebeb4d1f`。Release 同时提供包含实际修改、模型、Cargo.lock 和 Rust 依赖源码的 `yas-corresponding-source.zip`，不带 Git 历史。解压其中 yas 到本项目 vendor/yas，不要再次打补丁。使用 Rust stable、MSVC C++ 工具链：
+任务开始时程序会尝试聚焦游戏。运行期间请保持游戏前台；失焦会停止输入并提示处理方法。Win 是中断键，不要用它切回游戏。备用快捷键以网页显示为准。程序永不使用五星圣遗物作强化素材。
+
+配置数据库为 `runtime/ui/workbench.sqlite3`，配装库为 `runtime/loadouts/library.json`。升级前退出旧版并备份整个 runtime，再迁移到新目录。公开 ZIP 不包含 runtime；不要把使用后的整个目录公开上传。
+
+## 开发者构建
+
+以下仅针对源码构建，普通用户无需执行。Release 同时提供主项目源码、GOODScanner 和 yas 对应源码。对应源码包包含已经应用的修改、模型、锁定文件及依赖源码，不要再次打补丁。
+
+GOODScanner 固定上游 `bffc4aad040eac0bb5f10c8b0b2ef86121fb29b5`。解压到 vendor/goodscanner，使用 Rust nightly 和 MSVC C++ 工具链：
 
 ```powershell
-cd vendor/yas
-cargo build --release --locked -p yas-application --bin yas_artifact
-cargo build --release --locked -p yas_scanner_genshin --bin yas_readonly
+cargo build --manifest-path vendor/goodscanner/Cargo.toml --release --locked --offline -p genshin_scanner --bin workbench_goodscanner
 ```
 
-也可自行获取固定上游及 LFS 模型后运行 tools/patch_yas.py；与发行二进制严格对应时优先使用 Release 源码包。重分发时使用 Rust --remap-path-prefix 清除本机用户名及构建目录。
+从未经修改的固定上游开始时，使用 tools/patch_goodscanner.py，它会依次应用强化、反馈、换装和失焦保护补丁。yas 对应源码解压到 vendor/yas，编译 yas_artifact 与 yas_readonly。公开二进制通过 --remap-path-prefix 清除本机构建路径。
 
-## 构建主程序
-
-Python 3.10，安装 requirements.txt 后：
+主程序使用 Python 3.10、requirements.txt 和 PyInstaller 6.22.3：
 
 ```powershell
+python -m pip install -r requirements.txt
 python -m pip install pyinstaller==6.22.3
-python tools/build_windows.py
+python tools/build_windows.py --goodscanner-bin vendor/goodscanner/target/release/workbench_goodscanner.exe
 ```
 
-生成带依赖目录的程序和 ZIP。需要已构建 yas；可用 --yas-bin-dir 指定其目录。构建不拷贝 runtime，同时打包 bin/cocogoat-control.exe（可用 --frostflake 指定来源）。公开分发时必须同时提供适用的许可证和对应 yas 源码。
+构建器还需要兼容 yas 产物、bin/cocogoat-control.exe 和 onnxruntime.dll；可用 --yas-bin-dir、--frostflake 指定来源。成品 Windows ZIP 已包含这些文件。构建器不复制 runtime，并拒绝覆盖已有输出目录。
 
-## 验证与中断
+## 验证
 
-python -m unittest discover -s tests -v 只运行离线单元测试。tools/verify_windows_package.py 用独立副本验证冻结程序；只有显式 --live-scan 才扫描游戏，不强化或换装。
-
-任务运行时左／右 Win 请求停止，备用组合以网页实际注册结果为准，也可使用页面紧急中断。保留未知结果的 pending，不会重复提交消耗。界面适配限定简体中文、1920×1080；从背包圣遗物页开始。
-
-## 隔离验收脚本
-
-`tools/verify_release_scan.py --archive <ZIP>` 从新的解压目录经网页 API 发起扫描。`tools/verify_release_equip.py` 接受显式指定的配装库、历史扫描目录、配装 ID 和备用花索引，在新目录测试临时换装、恢复方案及幂等复核。这些开发验收脚本需要从管理员终端运行 Python；被测试的发行程序不需要。测试数据与凭据仅写入忽略的 runtime，不随发行包公开。用户中断会记为未完成，不能当作完整流程通过。
-
-管理员启动后可用 `ArtifactWorkbench.exe controller-check` 检查包内控制器连接，结果在 runtime/controller-check.json；此命令不操作游戏。
-
-## GOODScanner 后台
-
-默认扫描和穿戴使用固定上游 bffc4aad040eac0bb5f10c8b0b2ef86121fb29b5 的后台适配版，补丁见 tools/patch_goodscanner.py。已有完整相应源码树时执行 `cargo build --release --locked -p genshin_scanner --bin workbench_goodscanner`，主程序构建时用 `--goodscanner-bin` 指定产物。后台与命名映射均随包提供，运行时不要求另开 GOODScanner GUI。普通序贯强化暂保留兼容执行器；扫描和穿戴不依赖霜华。新增后台验证命令通过网页“识别与运行 → 检查 GOODScanner 连接”使用。
+`python -m unittest discover -s tests -v` 运行离线测试。游戏验收需显式提供自己的库存/配装，并在允许游戏操作的管理员环境中进行。当前版的实际验收范围及限制见 RELEASE_NOTES.md；不把离线通过表述为所有游戏状态均已实测。

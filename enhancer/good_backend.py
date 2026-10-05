@@ -1,8 +1,4 @@
-"""Owned GOODScanner backend: scan, non-consuming preflight, equip and live verify.
-
-No agent, generic computer-use, unlock endpoint, or enhancement-material action.
-The legacy reader/control path remains restricted to sequential enhancement.
-"""
+"""Owned GOODScanner backend: scanning, equipment and bounded enhancement."""
 from datetime import datetime
 import ctypes
 import hashlib
@@ -19,9 +15,38 @@ from urllib.parse import urlparse
 import requests
 
 from .navigation import ROOT
+from .job_control import stop_requested
 from .batch import save
 
 REVISION='bffc4aad040eac0bb5f10c8b0b2ef86121fb29b5'
+
+
+class InputNotSent(RuntimeError):
+    """The request was positively rejected before any game operation was queued."""
+
+
+def explain_failure(details):
+    for needle,message in (
+        ('Stage add produced no materials','阶段放入后材料栏仍为空，未点击强化。请检查是否有可用的四星及以下素材或经验材料；若材料充足，请查看保存的阶段诊断。'),
+        ('Stage target identity changed','阶段放入前后的目标属性不一致，未点击强化；已保存两次读数供核验。'),
+        ('Stage experience changed','阶段放入前后的经验读数发生变化，未点击强化；已保存诊断。'),
+        ('Stage material filter changed','阶段放入后的素材筛选不再是四星及以下，已阻止强化。'),
+        ('Stage observation unreadable','阶段放入后的画面在限定时间内无法完整识别，未点击强化；失败画面已保存。'),
+        ('Unresolved enhancement confirmation','本次强化的结果还未确认。请保持该圣遗物的强化页，点击“核对上次结果”；程序不会重发确认。'),
+        ('Game window activation failed','无法把原神切到前台。请点击游戏窗口，再继续任务。'),
+        ('Target search interrupted','定位过程中翻页或截图被中断，尚未查完目标列表；这不表示圣遗物不存在。具体终止原因已记录，未确认强化。'),
+        ('Exact target not located','未找到属性一致的目标。请检查库存是否已变化，必要时重新导入或扫描。'),
+        ('Five-star quick-add','未确认五星快捷放入已关闭。请在游戏的放入设置中关闭五星素材后重试。'),
+        ('Five-star or unrecognized material','素材星级未通过检查，本次确认已被阻止。'),
+        ('Four known substats','导入数据缺少第4条属性。请扫描当前筛选或更新导出文件。'),
+        ('Enhancement title mismatch','无法精确识别当前圣遗物名称，已停止，未据此确认强化；原始失败画面和 OCR 读数已保存。'),
+        ('Current level OCR','当前等级无法可靠识别，已停止，未据此确认强化；原始失败画面和等级读数已保存。'),
+        ('material count fraction','材料栏数量无法可靠识别，已阻止强化；失败画面已保存。'),
+        ('Main stat label mismatch','当前主属性标签未通过识别检查，已停止；失败画面已保存。'),
+        ('Enhancement observation failed','当前强化页无法完整识别，已停止；失败画面和具体字段错误已保存。'),
+    ):
+        if needle in details:return message
+    return 'GOODScanner 未完成：'+details
 
 
 def read(path,default=None):
@@ -73,14 +98,15 @@ class GoodClient:
         self.http.headers.update(Authorization='Bearer '+state['token'],Origin='http://127.0.0.1')
 
     def request(self,method,path,body=None):
-        allowed=('/workbench','/health','/status','/result?jobId=','/artifacts?jobId=') if method=='GET' else ('/scan','/equip')
+        allowed=('/workbench','/health','/status','/result?jobId=','/artifacts?jobId=') if method=='GET' else ('/scan','/equip','/enhance')
         if not any(path==p or (p.endswith('=') and path.startswith(p)) for p in allowed):raise ValueError('Unsupported GOODScanner operation')
-        if method=='POST' and (self.root/'runtime/stop.signal').exists():raise RuntimeError('已中断，不再发送游戏操作')
+        if method=='POST' and stop_requested(self.root):raise InputNotSent('已中断，不再发送游戏操作')
         response=self.http.request(method,self.state['endpoint']+path,json=body,timeout=2 if path in ('/workbench','/health') else 8)
         if not response.ok:
             try:message=response.json().get('error',f'HTTP {response.status_code}')
             except ValueError:message=f'HTTP {response.status_code}'
-            raise RuntimeError('GOODScanner：'+message)
+            error=InputNotSent if method=='POST' and response.status_code in (400,401,403,409,413) else RuntimeError
+            raise error('GOODScanner：'+message)
         return response.json()
 
     def ready(self):
@@ -90,6 +116,11 @@ class GoodClient:
         except (requests.RequestException,ValueError,RuntimeError):return False
 
     def run(self,path,payload,directory,stage,timeout=1200):
+        window=self.request('GET','/workbench').get('window',{})
+        if not window.get('found'):raise RuntimeError('未找到唯一的原神窗口。请先打开游戏；导入 JSON 和计算配装不需要打开游戏。')
+        if (window.get('width'),window.get('height'))!=(1920,1080):
+            raise RuntimeError(f"自动操作需要 1920×1080，当前游戏窗口为 {window.get('width')}×{window.get('height')}。请调整游戏分辨率后重试。")
+        if stage in ('open','scan','preflight'):print(json.dumps({'phase':'preflight','message':'已确认 1920×1080 游戏窗口，接下来自动切到游戏'},ensure_ascii=False),flush=True)
         directory=Path(directory);directory.mkdir(parents=True,exist_ok=True)
         intent={'stage':stage,'payload':payload,'state':'submitting','started':time.time()}
         save(directory/'request.json',intent)
@@ -101,7 +132,10 @@ class GoodClient:
         intent.update(state='submitted',job_id=identifier);save(directory/'request.json',intent)
         deadline=time.monotonic()+timeout;notice=0;last=None
         while time.monotonic()<deadline:
-            if (self.root/'runtime/stop.signal').exists():raise RuntimeError('已请求中断；未确认换装保留，不自动重发')
+            if stop_requested(self.root):raise RuntimeError('已请求中断；未确认操作保留，不自动重发')
+            blocked=read(Path(self.state['directory'])/'failures'/f'input-{identifier}.json',{})
+            if blocked.get('jobId')==identifier and blocked.get('reason')=='game_focus_lost':
+                raise RuntimeError('原神已失去前台焦点，已停止鼠标键盘输入。请切回游戏：扫描或强化从“背包 → 圣遗物”开始，换装可从“角色 → 圣遗物”开始。未确认的消耗不会重复执行。')
             state=self.request('GET','/status')
             if state.get('jobId')!=identifier:raise RuntimeError('GOODScanner 任务编号发生变化，停止读取旧结果')
             if state.get('state')=='completed':break
@@ -109,19 +143,19 @@ class GoodClient:
             progress=state.get('scanProgress',{}).get('artifacts',{}) if path=='/scan' else state.get('progress',{})
             pair=(progress.get('completed',0),progress.get('total',0))
             if pair!=last and time.monotonic()-notice>=2:
-                print(json.dumps({'phase':'scanning' if path=='/scan' else 'good_equipment','backend':'GOODScanner','stage':stage,
+                print(json.dumps({'phase':'scanning' if path=='/scan' else 'good_enhancement' if path=='/enhance' else 'good_equipment','backend':'GOODScanner','stage':stage,
                                   'completed':pair[0],'total':pair[1]},ensure_ascii=False),flush=True)
                 last=pair;notice=time.monotonic()
             time.sleep(.25)
         else:raise RuntimeError('GOODScanner 任务超时；未确认操作不会自动重发')
         result=self.request('GET','/result?jobId='+identifier)
         save(directory/'result.json',result)
-        expected=['artifacts'] if path=='/scan' else [f'equip:{i}' for i in range(len(payload['equip']))]
+        expected=['artifacts'] if path=='/scan' else ['enhance:0'] if path=='/enhance' else [f'equip:{i}' for i in range(len(payload['equip']))]
         rows=result.get('results',[])
         if len(rows)!=len(expected) or {r.get('id') for r in rows}!=set(expected):raise RuntimeError('GOODScanner 结果缺项或重复，不能视为完成')
         good={'already_correct'} if payload.get('verifyOnly') else {'success','already_correct'}
         failed=[r for r in rows if r.get('status') not in good]
-        if failed:raise RuntimeError('GOODScanner 未完成：'+'；'.join(str(r.get('message',r.get('status'))) for r in failed[:3]))
+        if failed:raise RuntimeError(explain_failure('；'.join(str(r.get('message',r.get('status'))) for r in failed[:3])))
         return identifier,result
 
 
@@ -150,6 +184,7 @@ def ensure_backend(root=ROOT):
     with socket.socket() as probe:probe.bind(('127.0.0.1',0));port=probe.getsockname()[1]
     token=secrets.token_urlsafe(32)
     env=dict(os.environ,WORKBENCH_GOOD_TOKEN=token,WORKBENCH_GOOD_INSTANCE=instance,
+             WORKBENCH_ENHANCE_DIR=str(directory/'enhancement'),
              WORKBENCH_STOP_FILE=str(runtime/'stop.signal'),ORT_DYLIB_PATH=str(root/'bin/onnxruntime.dll'),RAYON_NUM_THREADS='4')
     shutdown=work/'shutdown.signal'
     with (work/'server.log').open('wb') as log:
@@ -162,7 +197,7 @@ def ensure_backend(root=ROOT):
     while time.monotonic()<deadline:
         if client.ready():
             state['state']='running';save(directory/'server.json',state)
-            print(json.dumps({'phase':'good_ready','backend':'GOODScanner','message':'包内 GOODScanner 已就绪；扫描与换装不使用霜华'},ensure_ascii=False),flush=True)
+            print(json.dumps({'phase':'good_ready','backend':'GOODScanner','message':'包内 GOODScanner 已就绪；扫描、穿戴与强化使用统一后台'},ensure_ascii=False),flush=True)
             return client
         if process.poll() is not None:break
         time.sleep(.25)
@@ -170,16 +205,17 @@ def ensure_backend(root=ROOT):
     raise RuntimeError('GOODScanner 启动失败，请查看 runtime/goodscanner/instances 下的 server.log')
 
 
-def scan_inventory():
+def scan_inventory(scope='all'):
+    if scope not in ('all','current'):raise ValueError('扫描范围必须为当前筛选或全部库存')
     from .import_inventory import parse_document
     client=ensure_backend();directory=ROOT/'runtime/goodscanner/scans'/('scan-'+uuid.uuid4().hex)
     directory.mkdir(parents=True,exist_ok=True)
-    identifier,result=client.run('/scan',{'characters':False,'weapons':False,'artifacts':True,'achievements':False,'artifactMode':'all'},
+    identifier,result=client.run('/scan',{'characters':False,'weapons':False,'artifacts':True,'achievements':False,'artifactMode':'all','preserveFilters':scope=='current'},
                                  directory,'scan',timeout=2400)
     artifacts=client.request('GET','/artifacts?jobId='+identifier)
     if not isinstance(artifacts,list) or not artifacts:raise RuntimeError('GOODScanner 没有返回本次任务的完整圣遗物数据')
     audit=read(Path(client.state['directory'])/'receipts'/f'scan-{identifier}.json',{})
-    validate_scan_audit(audit,identifier,len(artifacts))
+    validate_scan_audit(audit,identifier,len(artifacts),scope)
     save(directory/'coverage.json',audit)
     document={'format':'GOOD','version':3,'source':'GOODScanner','artifacts':artifacts}
     save(directory/'good.json',document)
@@ -193,17 +229,20 @@ def scan_inventory():
         row['computed_roll_hints']=row.get('import_metadata',{})
         row['import_metadata']={}
     save(directory/'enhancer-artifacts.json',rows)
-    save(directory/'scan-count.json',{'requested':len(rows),'source':'goodscanner','game_scan_verified':True,'scope':'five_star',
+    save(directory/'scan-count.json',{'requested':len(rows),'source':'goodscanner','game_scan_verified':scope=='all','scope':'five_star','scan_scope':scope,
                                      'inventory_total':audit['expected'],'visited':audit['visited'],'skipped_lower_rarity':audit['skipped_lower_rarity']})
-    save(directory/'goodscanner-info.json',{'revision':REVISION,'job_id':identifier,'summary':summary,'scope':'五星库存'})
+    save(directory/'goodscanner-info.json',{'revision':REVISION,'job_id':identifier,'summary':summary,'scope':'当前筛选已读取库存' if scope=='current' else '全部五星库存'})
     print(json.dumps({'scan_finished':str(directory),'backend':'GOODScanner','five_star':len(rows)},ensure_ascii=False),flush=True)
     return directory
 
 
-def validate_scan_audit(audit,identifier,count):
+def validate_scan_audit(audit,identifier,count,scope='all'):
     keys=('expected','visited','five_star','accepted','skipped_lower_rarity','unknown_rarity','missed','skipped_positions')
     valid=all(type(audit.get(k)) is int and audit[k]>=0 for k in keys)
-    valid=valid and audit.get('jobId')==identifier and audit.get('complete') is True and audit.get('termination')=='Exhausted'
+    endings=('Exhausted','EmptyCell','UnchangedPage') if scope=='current' else ('Exhausted',)
+    scoped=audit.get('scope')=='observed_filter_results' and audit.get('account_complete') is False
+    valid=valid and audit.get('jobId')==identifier and audit.get('complete') is True and audit.get('termination') in endings
+    valid=valid and (scoped if scope=='current' else audit.get('scope') in (None,'full_inventory'))
     valid=valid and audit['expected']==audit['visited']==audit['five_star']+audit['skipped_lower_rarity']
     valid=valid and audit['five_star']==audit['accepted']==count and not any(audit[k] for k in ('unknown_rarity','missed','skipped_positions'))
     if not valid:raise RuntimeError('GOODScanner 缺少完整遍历凭据或数量不符；本轮库存不会发布为完整扫描')
@@ -248,7 +287,7 @@ def validate_receipts(receipts,payload,job_id,owner):
     return receipts
 
 
-def apply_loadouts(library_path,ids,scan,updates=None,policy='strict'):
+def apply_loadouts(library_path,ids,scan,updates=None,policy='strict',*,full_audit=False):
     from .loadouts import load_library,plan_file,fingerprint
     from .report import load_scan
     from .batch import apply_updates
@@ -268,6 +307,8 @@ def apply_loadouts(library_path,ids,scan,updates=None,policy='strict'):
     record()
     try:
         client=ensure_backend()
+        if client.request('GET','/workbench').get('inlineEquipVerification') is not True:
+            raise RuntimeError('当前后台尚不支持逐件换装回执，请更新配套后台；没有回退到三遍检查，也没有发送换装操作。')
         for row in plan['loadouts']:
             if row['status']!='ready':continue
             import re
@@ -278,14 +319,16 @@ def apply_loadouts(library_path,ids,scan,updates=None,policy='strict'):
             if len(targets)!=5 or len({a.slot for a in targets})!=5:raise ValueError('需要完整五件配装')
             payload={'equip':[{'artifact':good_artifact(a),'location':owner} for a in targets],
                      'allowBorrow':entry.get('equipment_policy')=='borrow'}
-            client.run('/equip',payload|{'preflightOnly':True},directory/row['id']/'preflight','preflight')
             pending=directory/'equip-pending.json';save(pending,{'loadout':row['id'],'payload':payload,'phase':'submitting'})
             job_id,applied=client.run('/equip',payload,directory/row['id']/'apply','equip')
-            save(pending,{'loadout':row['id'],'payload':payload,'phase':'awaiting_verification','job_id':job_id})
-            verified_id,_=client.run('/equip',payload|{'verifyOnly':True},directory/row['id']/'verify','verify')
+            save(pending,{'loadout':row['id'],'payload':payload,'phase':'awaiting_inline_receipts','job_id':job_id})
             receipts=[read(p) for p in (Path(client.state['directory'])/'receipts').glob('verify-*.json')]
-            receipts=validate_receipts(receipts,payload,verified_id,owner)
+            receipts=validate_receipts(receipts,payload,job_id,owner)
             save(directory/row['id']/'verification-receipts.json',receipts)
+            if full_audit:
+                audit_id,_=client.run('/equip',payload|{'verifyOnly':True},directory/row['id']/'audit','audit')
+                audit_receipts=[read(p) for p in (Path(client.state['directory'])/'receipts').glob('verify-*.json')]
+                save(directory/row['id']/'audit-receipts.json',validate_receipts(audit_receipts,payload,audit_id,owner))
             statuses={r['id']:r['status'] for r in applied['results']}
             refs={r['attributes']['slot']:r for r in entry['items']}
             items=[{'slot':a.slot,'name':refs[a.slot]['name'],'status':'equipped' if statuses[f'equip:{i}']=='success' else 'already_correct',

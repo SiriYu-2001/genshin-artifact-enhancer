@@ -3,25 +3,25 @@ export function createInventoryUI({api,catalog,selected,choose,refresh,scan,noti
   const $=id=>document.getElementById(id);let preview=null,working=false,jobBusy=false;
   const run=fn=>async(...args)=>{try{await fn(...args);}catch(e){notify(e.message,true);$('inventory-message').textContent=e.message;}finally{working=false;buttons();}};
   function buttons(){
-    $('inventory-file').disabled=working||jobBusy;$('inventory-scan').disabled=working||jobBusy;
-    $('inventory-import').disabled=working||jobBusy;$('inventory-confirm').disabled=working||jobBusy||!preview?.can_import;
+    $('inventory-file').disabled=working;$('inventory-scan').disabled=working||jobBusy;$('inventory-scan-all').disabled=working||jobBusy;
+    $('inventory-import').disabled=working;$('inventory-confirm').disabled=working||!preview?.can_import;
   }
   function render(){
     const entries=catalog().snapshots;
-    $('inventory-snapshot').innerHTML=entries.length?entries.map(s=>`<option value="${s.id}">${escapeHTML(s.date)} · ${s.five_star} 件五星 · ${escapeHTML(s.source==='import'?s.label:'游戏扫描')}</option>`).join(''):'<option value="">还没有库存</option>';
+    $('inventory-snapshot').innerHTML=entries.length?entries.map(s=>`<option value="${s.id}">${escapeHTML(s.date)} · ${s.five_star} 件五星 · ${escapeHTML(s.label||'游戏扫描')}</option>`).join(''):'<option value="">还没有库存</option>';
     $('inventory-snapshot').value=selected();
     const s=entries.find(x=>x.id===selected());
     $('inventory-next').disabled=!s;
     $('inventory-current').textContent=s?`已选择 ${s.five_star} 件五星${s.source==='import'?' · 仅计算文件内库存':' · 游戏扫描记录'}${s.ownership_stale?' · 装备归属可能已变化':''}`:'先导入一个 JSON，或选择扫描游戏背包。';
   }
   async function fileSelected(file){
-    if(!file)return;if(jobBusy)throw Error('请等待当前任务结束后再导入');
+    if(!file)return;
     if(file.size>10*1024*1024)throw Error('JSON 文件最大 10 MiB');
     working=true;preview=null;buttons();$('inventory-message').textContent='正在检查文件内容…';
     const content=await file.text();preview=await api('/api/inventory/import',{action:'preview',filename:file.name,content});
     const p=preview;
     $('inventory-preview').hidden=false;
-    $('inventory-preview-body').innerHTML=`<h3>${escapeHTML(file.name)}</h3><p>${escapeHTML(p.format)} · 文件 ${p.total} 件 · 接收 ${p.accepted} 件五星 · 跳过 ${p.skipped_non_five} 件低星</p><p>满级 ${p.mature} 件 · 定制 ${p.defined} 件 · 缺少定制状态 ${p.unknown_kind} 件 · 缺少第四词条 ${p.missing_preview} 件</p><p class="small muted">装备归属未知 ${p.unknown_owner} 件；莫娜标记忽略 ${p.excluded} 件；相同属性的额外物品 ${p.identical_extra} 件（分别保留）。</p>${p.error_count?`<p class="warning">${p.error_count} 件数据需要修正，尚未写入库存。</p><ul>${p.errors.map(e=>`<li>${escapeHTML(e.item)}：${escapeHTML(e.reason)}</li>`).join('')}</ul>`:''}<p class="small muted">${escapeHTML(p.scope)}</p>`;
+    $('inventory-preview-body').innerHTML=`<h3>${escapeHTML(file.name)}</h3><p>${escapeHTML(p.format)} · 文件 ${p.total} 件 · 接收 ${p.accepted} 件五星 · 跳过 ${p.skipped_non_five} 件低星</p><p>满级 ${p.mature} 件 · 定制 ${p.defined} 件 · 开始培养时需核实来源 ${p.unknown_kind} 件 · 缺少第四词条 ${p.missing_preview} 件</p><p class="small muted">装备归属未知 ${p.unknown_owner} 件；莫娜标记忽略 ${p.excluded} 件；相同属性的额外物品 ${p.identical_extra} 件（分别保留）。</p>${p.error_count?`<p class="warning">${p.error_count} 件数据需要修正，尚未写入库存。</p><ul>${p.errors.map(e=>`<li>${escapeHTML(e.item)}：${escapeHTML(e.reason)}</li>`).join('')}</ul>`:''}${p.unknown_kind?`<p class="small muted">这份文件没有完整的定制标记。程序会在游戏中核实来源，普通圣遗物可继续培养。</p>`:""}<p class="small muted">${escapeHTML(p.scope)}</p>`;
     $('inventory-message').textContent=p.can_import?'检查完成，确认后保存到本地库存。':'请修正文件中的错误后重新导入。';
     working=false;buttons();
   }
@@ -37,6 +37,6 @@ export function createInventoryUI({api,catalog,selected,choose,refresh,scan,noti
     notify(result.duplicate?'已选择已有库存':'库存导入成功');
   });
   $('inventory-snapshot').onchange=e=>{choose(e.target.value);render();};
-  $('inventory-scan').onclick=run(scan);
+  $('inventory-scan').onclick=run(()=>scan('current'));$('inventory-scan-all').onclick=run(()=>scan('all'));
   return {render,state:busy=>{jobBusy=busy;buttons();},previewFile:run(fileSelected)};
 }

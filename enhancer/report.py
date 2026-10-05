@@ -1,3 +1,4 @@
+from dataclasses import replace
 """Build a reviewable baseline from a complete enhanced-yas scan (never ordinary GOOD alone)."""
 import argparse
 from copy import deepcopy
@@ -55,7 +56,7 @@ def displayed_score(artifact, profile):
 
 
 def select_build(pool, profile):
-    if profile.data.get("artifact_crit_rate_cap") is not None:
+    if profile.data.get("artifact_crit_rate_cap") is not None or profile.data.get("artifact_energy_recharge_min",0):
         from .capped import CappedInventory
         prepared = CappedInventory(pool, profile)
         lookup = {a.id: a for a in pool}
@@ -81,7 +82,7 @@ def create_report(directory, profile, include_candidates=False):
         if a.rarity != 5 or not profile.allows(a):
             continue
         try:
-            profile.score(a)
+            profile.score(replace(a,special='ordinary') if a.special=='unknown' else a)
             valid.append(a)
         except UncertainObservation as exc:
             errors.append({"id": a.id, "name": names[a.id], "level": a.level, "reason": str(exc)})
@@ -91,15 +92,18 @@ def create_report(directory, profile, include_candidates=False):
     def describe(build):
         if not build:
             return None
-        bounds = sum((profile.score(a, include_pending=False) for a in build), Bounds(F(0), F(0)))
+        scoring=[replace(a,special='ordinary') if a.level<20 and a.special=='unknown' else a for a in build]
+        bounds = sum((profile.score(a, include_pending=False) for a in scoring), Bounds(F(0), F(0)))
         shown_score = sum(displayed_score(a, profile) for a in build)
-        from .capped import main_crit
+        from .capped import main_crit,main_energy
         total_crit = sum(main_crit(a) + sum(s.value for s in a.stats if s.key == "critRate_" and not s.pending) for a in build)
-        if profile.data.get("artifact_crit_rate_cap") is not None:
+        total_energy=sum(main_energy(a)+sum(s.value for s in a.stats if s.key=='enerRech_' and not s.pending) for a in build)
+        if profile.data.get("artifact_crit_rate_cap") is not None or profile.data.get("artifact_energy_recharge_min",0):
             from .capped import build_score
-            bounds = build_score(build, profile)
-            shown_score = build_score(build, profile, displayed=True)
+            bounds = build_score(scoring, profile)
+            shown_score = build_score(scoring, profile, displayed=True)
         return {"displayed_score": float(shown_score), "artifact_crit_rate_total": float(total_crit),
+                "artifact_energy_recharge_total":float(total_energy),"artifact_energy_recharge_min":profile.data.get('artifact_energy_recharge_min',0),
                 "internal_score_bounds": [float(bounds.lo), float(bounds.hi)],
                 "items": [{"id": a.id, "name": names[a.id], "slot": a.slot, "set": a.set_key,
                            "level": a.level, "equipped": a.equipped, "locked": a.locked,
@@ -108,14 +112,18 @@ def create_report(directory, profile, include_candidates=False):
                           for a in build]}
 
     baseline_errors = [e for e in errors if e["level"] == 20]
+    bootstrap=None
+    if not best and coverage['complete'] and not baseline_errors:
+        from .bootstrap import plan as bootstrap_plan
+        bootstrap=bootstrap_plan(valid,profile,names)
     result = {"profile": profile.data, "coverage": coverage, "recognition_errors": errors,
               "baseline_usable": coverage["complete"] and not baseline_errors and best is not None,
-              "best_available_build": describe(best), "equipped_items_found": describe(wearing),
+              "best_available_build": describe(best), "bootstrap":bootstrap,"equipped_items_found": describe(wearing),
               "equipped_build_complete": len(wearing) == 5 and {a.slot for a in wearing} == set(SLOTS),
               "five_star_count": sum(a.rarity == 5 for a in artifacts),
               "profile_candidate_count": sum(a.level < 20 for a in valid)}
     if include_candidates and result["baseline_usable"]:
-        if profile.data.get("artifact_crit_rate_cap") is not None:
+        if profile.data.get("artifact_crit_rate_cap") is not None or profile.data.get("artifact_energy_recharge_min",0):
             from .capped import CappedInventory
             prepared = CappedInventory(valid, profile)
         else:

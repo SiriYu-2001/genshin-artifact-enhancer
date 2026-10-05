@@ -123,7 +123,7 @@ def effective_profile(campaign, demand, claims):
     return p,blocked
 
 
-def allocate(inventory, campaign, names):
+def allocate(inventory, campaign, names,bootstrap_plans=None):
     """Reserve mature builds from highest to lowest priority, retaining item IDs."""
     reserved=set(campaign.reserved_ids)
     for demand in campaign.demands:reserved.update(demand.profile.data.get('reserved_ids',[]))
@@ -134,17 +134,27 @@ def allocate(inventory, campaign, names):
     for demand in campaign.demands:
         profile,blocked=effective_profile(campaign,demand,claims)
         build=select_build(inventory,profile)
+        bootstrap=None
+        if build is None:
+            from .bootstrap import plan as bootstrap_plan
+            bootstrap=bootstrap_plan(inventory,profile,names,committed=(bootstrap_plans or {}).get(demand.id))
         unreserved,_=effective_profile(campaign,demand,{})
         independent=select_build(inventory,unreserved) if blocked else build
         ids=[a.id for a in build] if build else []
+        if bootstrap:ids=bootstrap['items']
+        preview_build=build or ([a for a in inventory if a.id in ids] if bootstrap else [])
         row={'id':demand.id,'character':profile.data['character'],'name':profile.data.get('name',demand.id),
-             'status':'ready' if build else 'missing_mature_build',
+             'status':'ready' if build else 'bootstrap' if bootstrap else 'missing_mature_build',
+             'bootstrap':bootstrap,
              'score':float(build_score(build,profile,displayed=True)) if build else None,
              'independent_score':float(build_score(independent,unreserved,displayed=True)) if independent else None,
              'items':[{'id':a.id,'name':names[a.id],'slot':a.slot,'set_key':a.set_key,'main':a.main,
                        'level':a.level,'equipped':a.equipped,'substats':[{'key':s.key,'value':float(s.value)} for s in a.stats]}
-                      for a in (build or [])],
+                      for a in preview_build],
              'blocked_by_higher_demands':blocked,'effective_profile':profile.data}
+        from .capped import main_energy
+        row['artifact_energy_recharge_min']=profile.data.get('artifact_energy_recharge_min',0)
+        row['artifact_energy_recharge_total']=float(sum(main_energy(a)+sum(s.value for s in a.stats if s.key=='enerRech_' and not s.pending) for a in build)) if build else None
         rows.append(row)
         for identifier in ids:claims.setdefault(identifier,[]).append(demand.id)
     overlaps=[{'artifact_id':identifier,'demands':owners,
@@ -166,19 +176,24 @@ def allocate(inventory, campaign, names):
             'scenarios':campaign.scenarios,'scenario_names':campaign.scenario_names}
 
 
-def plan(inventory, campaign, names,cache=None):
-    allocation=allocate(inventory,campaign,names)
+def plan(inventory, campaign, names,cache=None,bootstrap_plans=None):
+    allocation=allocate(inventory,campaign,names,bootstrap_plans)
     selected=None
     for row in allocation['demands']:
         bucket=cache.setdefault(row['id'],{}) if cache is not None else None
-        row['decisions']=replan(inventory,Profile(row['effective_profile']),names,cache=bucket) if row['status']=='ready' else []
-        eligible=[d for d in row['decisions'] if d['action']=='enhance']
+        if row['status']=='bootstrap':
+            lookup={a.id:a for a in inventory}
+            row['decisions']=[{'id':k,'name':names[k],'level':lookup[k].level,'set_key':lookup[k].set_key,
+                'action':'enhance','bootstrap':True,'reason':'bootstrap_mature_build','probability_lower':None}
+                for k in row['bootstrap']['pending_items']]
+        else:row['decisions']=replan(inventory,Profile(row['effective_profile']),names,cache=bucket) if row['status']=='ready' else []
+        eligible=[d for d in row['decisions'] if d['action'] in ('enhance','inspect')]
         row['eligible_count']=len(eligible)
         row['deferred']=[d for d in row['decisions'] if d['action'] in ('reread','unsupported')]
         if eligible and selected is None:
             selected={'demand_id':row['id'],'candidate':eligible[0],'profile':row['effective_profile']}
     allocation['next']=selected
-    allocation['blocked_demands']=[r['id'] for r in allocation['demands'] if r['status']!='ready']
+    allocation['blocked_demands']=[r['id'] for r in allocation['demands'] if r['status'] not in ('ready','bootstrap')]
     return allocation
 
 

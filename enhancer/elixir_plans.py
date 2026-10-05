@@ -3,11 +3,11 @@ import hashlib
 from itertools import combinations_with_replacement
 import numpy as np
 from .model import Artifact, SLOTS, ROLLS, MEANS
-from .capped import CappedInventory, Point, pareto, main_crit
+from .capped import CappedInventory, Point, pareto, main_crit, main_energy
 from .elixir import TYPE_WEIGHT
 
 
-def sample_candidate(profile,action,n,seed=20260929):
+def sample_candidate(profile,action,n,seed=20260929,with_energy=False):
     rng=np.random.default_rng(seed)
     all_keys=list(ROLLS);tiers=np.array([[float(v) for v in ROLLS[k]] for k in all_keys])
     selected=action['selected'];legal=[k for k in all_keys if k!=action['main'] and k not in selected]
@@ -32,6 +32,9 @@ def sample_candidate(profile,action,n,seed=20260929):
     coef=np.array([float(profile.weight(k)/MEANS[k]) if k!='critRate_' else 0 for k in all_keys])
     cr=np.sum(values*(keys==all_keys.index('critRate_')),axis=1)
     other=np.sum(values*coef[keys],axis=1)
+    if with_energy:
+        energy=np.sum(values*(keys==all_keys.index('enerRech_')),axis=1)+(51.8 if action['main']=='enerRech_' else 0)
+        return cr,other,energy
     return cr,other
 
 
@@ -42,17 +45,19 @@ def two_complements(inv,slots,bound):
         for slot in SLOTS:
             if slot in slots:continue
             bucket=inv.buckets[bound,slot,slot!=off]
-            states=pareto((Point(a.crit+b.crit,a.other+b.other,(),a.main_crit+b.main_crit)
-                           for a in states for b in bucket),inv.cap)
+            states=pareto((Point(a.crit+b.crit,a.other+b.other,(),a.main_crit+b.main_crit,a.energy+b.energy)
+                           for a in states for b in bucket),inv.cap,inv.energy_floor)
         choices.extend(states)
-    return pareto(choices,inv.cap)
+    return pareto(choices,inv.cap,inv.energy_floor)
 
 
-def score(points,cr,other,main,inv):
+def score(points,cr,other,main,inv,energy=None):
     best=np.full(len(cr),-np.inf)
     for p in points:
         room=max(0,float(inv.cap-p.main_crit)-main)
-        best=np.maximum(best,other+float(p.other)+float(inv.w)*np.minimum(cr+float(p.crit),room))
+        value=other+float(p.other)+float(inv.w)*np.minimum(cr+float(p.crit),room)
+        if inv.energy_floor:value=np.where(energy+float(p.energy)>=float(inv.energy_floor)-1e-10,value,-np.inf)
+        best=np.maximum(best,value)
     return best
 
 
@@ -63,8 +68,8 @@ def compare(profile,pool,actions,n=200000,budget=None,minimum_gain=0.):
         main[i]=float(main_crit(artifact))
         for draw in (0,1):
             seed=int.from_bytes(hashlib.sha256(f'{profile.data["character"]}:{i}:{draw}:20260929'.encode()).digest()[:8],'little')
-            cr,other=sample_candidate(profile,a,n,seed);samples[i,draw]=(cr,other)
-            for bound in ('lo','hi'):singles[i,draw,bound]=score(inv.frontier(artifact,bound),cr,other,main[i],inv)
+            cr,other,energy=sample_candidate(profile,a,n,seed,with_energy=True);samples[i,draw]=(cr,other,energy)
+            for bound in ('lo','hi'):singles[i,draw,bound]=score(inv.frontier(artifact,bound),cr,other,main[i],inv,energy)
     results=[]
     for i,j in combinations_with_replacement(range(len(actions)),2):
         a,b=actions[i],actions[j]
@@ -75,7 +80,7 @@ def compare(profile,pool,actions,n=200000,budget=None,minimum_gain=0.):
             forced=np.maximum(singles[i,0,bound],singles[j,1,bound])
             if a['slot']!=b['slot']:
                 cr=samples[i,0][0]+samples[j,1][0];other=samples[i,0][1]+samples[j,1][1]
-                both=score(two_complements(inv,{a['slot'],b['slot']},bound),cr,other,main[i]+main[j],inv)
+                both=score(two_complements(inv,{a['slot'],b['slot']},bound),cr,other,main[i]+main[j],inv,samples[i,0][2]+samples[j,1][2])
                 forced=np.maximum(forced,both)
             value=np.maximum(baseline,forced)
             gain=np.maximum(value-baseline,0);p=float(np.mean(gain>minimum_gain+1e-10))

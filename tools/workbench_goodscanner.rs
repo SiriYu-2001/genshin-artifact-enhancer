@@ -14,10 +14,26 @@ impl log::Log for FileLogger {
 static LOGGER: FileLogger = FileLogger;
 
 fn main() -> anyhow::Result<()> {
+    // Initialize before the HTTP diagnostic thread reads window dimensions.
+    // Waiting until lazy GameInfo construction returns DPI-virtualized sizes.
+    #[cfg(windows)] yas::utils::set_dpi_awareness();
     log::set_logger(&LOGGER).map_err(|_| anyhow::anyhow!("logger initialization failed"))?;
     log::set_max_level(log::LevelFilter::Debug);
     let mut args=std::env::args().skip(1);
     let first=args.next().ok_or_else(||anyhow::anyhow!("port or --replay-selection required"))?;
+    if first=="--replay-enhancement" {
+        let frame=image::open(args.next().ok_or_else(||anyhow::anyhow!("frame required"))?)?.to_rgb8();
+        let request:genshin_scanner::manager::workbench_enhance::Request=serde_json::from_slice(&std::fs::read(args.next().ok_or_else(||anyhow::anyhow!("request required"))?)?)?;
+        let backend=args.next().unwrap_or("ppocrv6tiny".into());
+        let model=genshin_scanner::scanner::common::ocr_factory::create_ocr_model(&backend)?;
+        let started=std::time::Instant::now();
+        let observed=genshin_scanner::manager::workbench_enhance::observe_frame(&frame,model.as_ref(),&request)?;
+        let mut result=serde_json::to_value(&observed)?;
+        result["observationMs"]=serde_json::json!(started.elapsed().as_millis());
+        result["visibleMaterialRarities"]=serde_json::to_value(genshin_scanner::manager::workbench_enhance::visible_materials(&frame,observed.material_count)?)?;
+        println!("{}",result);
+        return Ok(());
+    }
     if first=="--replay-selection" {
         let frame=image::open(args.next().ok_or_else(||anyhow::anyhow!("frame required"))?)?.to_rgb8();
         let target:genshin_scanner::scanner::common::models::GoodArtifact=serde_json::from_slice(&std::fs::read(args.next().ok_or_else(||anyhow::anyhow!("target required"))?)?)?;

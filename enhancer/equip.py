@@ -397,9 +397,9 @@ class EquipDriver:
         raise RuntimeError('Equipment result not confirmed; no repeated click')
 
 
-def apply(library_path,ids,scan,updates=None,policy='strict'):
+def apply(library_path,ids,scan,updates=None,policy='strict',*,full_audit=False):
     from .good_backend import apply_loadouts
-    return apply_loadouts(library_path,ids,scan,updates,policy)
+    return apply_loadouts(library_path,ids,scan,updates,policy,full_audit=full_audit)
 
 
 def legacy_apply(library_path,ids,scan,updates=None,policy='strict'):

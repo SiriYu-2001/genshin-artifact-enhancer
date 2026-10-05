@@ -47,7 +47,7 @@ class BatchTests(unittest.TestCase):
                            'substats':[{'key':s.key,'value':float(s.value)} for s in artifact.stats]})
                 (run/'pending.json').unlink()
                 return SimpleNamespace(returncode=0)
-            def plan(pool,*args):
+            def plan(pool,*args,**kwargs):
                 self.assertEqual(pool[0].level,20)
                 return []
             class Nav:
@@ -99,7 +99,7 @@ class BatchTests(unittest.TestCase):
                        'profile':str(profile),'ownership':'borrow','runs':[],'status':'prepared'})
             batch.save(directory/'inventory-updates.json',{})
             calls=[]
-            def plan(pool,p,names):
+            def plan(pool,p,names,**kwargs):
                 return [{'id':a.id,'name':names[a.id],'level':a.level,'action':'enhance','probability_lower':.5}
                         for a in pool if a.level<20]
             def execute(*args,**kwargs):

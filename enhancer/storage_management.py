@@ -54,8 +54,8 @@ def inspect(runtime, days=0):
                             protected.update(EVIDENCE.findall(content))
                     if name in ('active-batch.json','active-equip.json','session.json'):
                         data=json.loads(content)
-                        if name=='active-batch.json' and data.get('status') not in ('finished','finished-with-deferred'):blocked.append('有未完成的强化任务')
-                        if name=='active-equip.json' and data.get('status')!='verified':blocked.append('有未完成的换装任务')
+                        if name=='active-batch.json' and data.get('status') not in ('finished','finished-with-deferred','cancelled'):blocked.append('有未完成的强化任务')
+                        if name=='active-equip.json' and data.get('status') not in ('verified','cancelled'):blocked.append('有未完成的换装任务')
                         if name=='session.json' and data.get('busy'):blocked.append('扫描控制器正在运行')
                 except (OSError,UnicodeError,ValueError):blocked.append('部分记录无法读取，不能确认引用关系')
             if (path.suffix.lower()=='.png' and len(rel.parts)==2
@@ -88,15 +88,25 @@ def clean(runtime, preview):
 def finish_cleanup(runtime, job):
     """Run only once the worker exits. Failed tasks retain their last ten frames."""
     root=Path(runtime)
+    cutoff=job.get('finished',time.time())
+    if not next(root.glob('observe-*/game.png'),None) and not next(root.glob('read-*/*.png'),None):return {'removed':0,'bytes':0}
     if job.get('status') in ('failed','stopped'):
         frames=sorted((p for p in root.glob('observe-*/game.png')
-                       if regular_tree(p,root.resolve()) and p.stat().st_mtime>=job['started']),
+                       if regular_tree(p,root.resolve()) and job['started']<=p.stat().st_mtime<=cutoff),
                       key=lambda p:p.stat().st_mtime)[-10:]
         path=root/'ui/jobs'/job['id']/'failure-evidence.json'
         path.write_text(json.dumps({'status':'failed','evidence':[str(p.parent) for p in frames]},ensure_ascii=False),encoding='utf-8')
     preview=inspect(root,0)
     if preview['blocked']:return {'skipped':preview['blocked']}
-    result=clean(root,preview)
+    removed=size=0
+    for item in preview['files']:
+        if item['modified_ns']>int(cutoff*1e9):continue
+        path=root/item['path']
+        if not regular_tree(path,root.resolve()):continue
+        stat=path.stat()
+        if stat.st_size!=item['bytes'] or stat.st_mtime_ns!=item['modified_ns']:continue
+        path.unlink();removed+=1;size+=stat.st_size
+    result={'removed':removed,'bytes':size}
     (root/'screenshot-cleanup.json').write_text(json.dumps({'at':time.time(),**result,
         'policy':'Successful screenshots removed; error evidence and text receipts retained.'}),encoding='utf-8')
     return result

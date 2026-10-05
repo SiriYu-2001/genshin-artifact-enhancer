@@ -29,6 +29,7 @@ def main():
     loadout.add_argument('--updates',type=Path)
     loadout.add_argument('--conflicts',choices=['strict','priority'],default='strict')
     loadout.add_argument('--output',type=Path)
+    loadout.add_argument('--full-audit',action='store_true',help='Optional second read-only equipment pass for acceptance testing')
     campaign=commands.add_parser('campaign',help='One scan for multiple demands')
     campaign.add_argument('action',choices=['plan','start'])
     campaign.add_argument('--config',required=True,type=Path)
@@ -70,7 +71,7 @@ def main():
         if args.action=='apply':
             if not args.ids or not args.scan:parser.error('loadout apply requires --ids and --scan')
             from .equip import apply
-            apply(args.library,args.ids,args.scan,args.updates,args.conflicts)
+            apply(args.library,args.ids,args.scan,args.updates,args.conflicts,full_audit=args.full_audit)
             return
         if args.action=='save':
             if not args.allocation:parser.error('loadout save requires --allocation')
@@ -102,7 +103,6 @@ def main():
         start(args.profile,args.ownership,args.scan)
         return
     if args.command=="batch":
-        ensure_controller()
         from .batch import main as batch
         batch()
         return
@@ -143,8 +143,7 @@ def main():
         (run_dir/"plan-before.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
         print(json.dumps(active,ensure_ascii=False))
     else:
-        ensure_controller()
-        from .stage import main as run
+        from .good_enhancement import main as run
         run()
 
 

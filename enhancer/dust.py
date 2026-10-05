@@ -10,8 +10,8 @@ from functools import lru_cache
 import numpy as np
 
 from .model import Bounds,ROLLS,MEANS
-from .capped import CappedInventory,main_crit
-from .elixir import upgrade_counts,roll_sums,other_distribution,tail_metrics,target_metrics
+from .capped import CappedInventory,main_crit,main_energy
+from .elixir import upgrade_counts,roll_sums,other_distribution,tail_metrics,target_metrics,constrained_thresholds
 
 COST={'flower':1,'plume':1,'sands':2,'goblet':2,'circlet':2}
 
@@ -76,19 +76,20 @@ class DustAdvisor:
         if not complements['lo'].points:raise ValueError('该物品无法组成满足约束的4+1配装')
         best_hit=max(self.profile.weight(k)*max(ROLLS[k])/MEANS[k] for k in keys)
         upper=max(sum(b.hi*self.profile.weight(k)/MEANS[k] for k,b in bases.items() if k!='critRate_')+
-                  complements['hi'].query(bases.get('critRate_',Bounds(F(0),F(0))).hi,main_crit(artifact))+n*best_hit
+                  (complements['hi'].query(bases.get('critRate_',Bounds(F(0),F(0))).hi,main_crit(artifact),
+                     main_energy(artifact)+bases.get('enerRech_',Bounds(F(0),F(0))).hi+(n*max(ROLLS['enerRech_']) if 'enerRech_' in keys else F(0))) or F(0))+n*best_hit
                   for n,bases in hypotheses)
         pruned=upper<=self.inventory.baseline.lo
         responses={}
-        def thresholds(n,bases,bound,count):
-            key=n,bound,count
+        def thresholds(n,bases,bound,count,energy_count=0):
+            key=n,bound,count,energy_count
             if key not in responses:
-                support,den=roll_sums('critRate_',count)
                 cr=getattr(bases.get('critRate_',Bounds(F(0),F(0))),bound)
+                er=main_energy(artifact)+getattr(bases.get('enerRech_',Bounds(F(0),F(0))),bound)
                 other=sum(getattr(v,bound)*self.profile.weight(k)/MEANS[k] for k,v in bases.items() if k!='critRate_')
                 baseline=self.inventory.baseline.hi if bound=='lo' else self.inventory.baseline.lo
-                response=np.array([float(baseline-other-complements[bound].query(cr+F(v,100),main_crit(artifact))) for v,_ in support])
-                responses[key]=response,np.array([num/den for _,num in support])
+                responses[key]=constrained_thresholds(complements[bound],baseline,main_crit(artifact),count,energy_count,
+                    cr_base=cr,energy_base=er,other_base=other,energy_weight=self.profile.weight('enerRech_') if self.inventory.energy_floor else F(0))
             return responses[key]
         actions=[]
         target=self.profile.data.get('resource_target_score')
@@ -105,10 +106,11 @@ class DustAdvisor:
                     total=np.zeros(8)
                     for counts,prob in upgrade_counts(n,guarantee):
                         cr_count=counts[ordered.index('critRate_')] if 'critRate_' in ordered else 0
-                        spec=tuple(sorted((k,h,self.profile.weight(k)) for k,h in zip(ordered,counts) if k!='critRate_' and self.profile.weight(k)>0))
+                        er_count=counts[ordered.index('enerRech_')] if self.inventory.energy_floor and 'enerRech_' in ordered else 0
+                        spec=tuple(sorted((k,h,self.profile.weight(k)) for k,h in zip(ordered,counts) if k!='critRate_' and not(self.inventory.energy_floor and k=='enerRech_') and self.profile.weight(k)>0))
                         values,tail,moment=other_distribution(spec)
                         for i,bound in enumerate(('lo','hi')):
-                            cuts,probs=thresholds(n,bases,bound,cr_count)
+                            cuts,probs=thresholds(n,bases,bound,cr_count,er_count)
                             p,g=tail_metrics(values,tail,moment,cuts)
                             total[i]+=float(prob)*float(np.dot(probs,p));total[2+i]+=float(prob)*float(np.dot(probs,g))
                             if target is not None:

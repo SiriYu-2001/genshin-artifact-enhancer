@@ -116,12 +116,12 @@ function renderDemands(){
   $('mode-single').classList.toggle('selected',!multi);$('mode-multi').classList.toggle('selected',multi);
   $('mode-single').setAttribute('aria-pressed',String(!multi));$('mode-multi').setAttribute('aria-pressed',String(multi));
   $('mode-description').textContent=multi?'扫描一次，按优先级处理全部需求':'针对一个角色的一套配装';
-  $('demand-list').innerHTML=entries.map(entry=>{const i=draft.demands.indexOf(entry),p=entry.profile;return `<div class="demand-card ${i===active?'active':''}" data-demand="${esc(entry.id)}" draggable="${multi}" tabindex="0" role="button" aria-label="编辑${esc(p.character)}"><div class="demand-top"><span class="rank">${String(i+1).padStart(2,'0')}</span><h3>${esc(p.character||'未命名角色')}</h3></div><p>${esc(catalog.sets[p.set_key]||p.set_key)}</p><div class="demand-bottom"><span>阈值 ${+(p.threshold*100).toFixed(2)}% · 暴击计分 ${p.artifact_crit_rate_cap}%</span>${multi?`<button class="icon-btn" data-move="-1" title="提高优先级" aria-label="提高优先级">↑</button><button class="icon-btn" data-move="1" title="降低优先级" aria-label="降低优先级">↓</button><button class="icon-btn" data-remove="1" title="删除需求" aria-label="删除需求">×</button>`:''}</div></div>`;}).join('');
+  $('demand-list').innerHTML=entries.map(entry=>{const i=draft.demands.indexOf(entry),p=entry.profile;return `<div class="demand-card ${i===active?'active':''}" data-demand="${esc(entry.id)}" draggable="${multi}" tabindex="0" role="button" aria-label="编辑${esc(p.character)}"><div class="demand-top"><span class="rank">${String(i+1).padStart(2,'0')}</span><h3>${esc(p.character||'未命名角色')}</h3></div><p>${esc(catalog.sets[p.set_key]||p.set_key)}</p><div class="demand-bottom"><span>阈值 ${+(p.threshold*100).toFixed(2)}% · 暴击计分 ${p.artifact_crit_rate_cap}% · 充能 ≥${p.artifact_energy_recharge_min??0}%</span>${multi?`<button class="icon-btn" data-move="-1" title="提高优先级" aria-label="提高优先级">↑</button><button class="icon-btn" data-move="1" title="降低优先级" aria-label="降低优先级">↓</button><button class="icon-btn" data-remove="1" title="删除需求" aria-label="删除需求">×</button>`:''}</div></div>`;}).join('');
 }
 function renderEditor(){
   const p=profile();$('editor-kicker').textContent='DEMAND '+String(active+1).padStart(2,'0');$('editor-title').textContent=p.character||'培养需求';
   $('character').value=p.character;$('profile-name').value=p.name;$('aliases').value=(p.character_aliases||[]).filter(a=>a!==p.character).join('，');$('set-key').value=p.set_key;
-  $('threshold').value=+(p.threshold*100).toFixed(6);$('crit-cap').value=p.artifact_crit_rate_cap;
+  $('threshold').value=+(p.threshold*100).toFixed(6);$('crit-cap').value=p.artifact_crit_rate_cap;$('energy-min').value=p.artifact_energy_recharge_min??0;
   $('main-stats').innerHTML=['sands','goblet','circlet'].map(slot=>`<div class="main-card"><strong>${SLOT[slot]}</strong><div class="chips">${catalog.main_options[slot].map(key=>`<button type="button" class="chip ${p.main_stats[slot].includes(key)?'on':''}" data-slot="${slot}" data-stat="${key}" aria-pressed="${p.main_stats[slot].includes(key)}">${esc(STAT[key]||key)}</button>`).join('')}</div></div>`).join('');
   $('weights').innerHTML=WEIGHTS.map(key=>`<label class="weight-box"><span>${STAT[key]}</span><input required type="number" min="0" max="100" step="0.01" data-weight="${key}" aria-label="${STAT[key]}权重" value="${p.weights[key]??0}"><small>均值 ${catalog.means[key]}${key.endsWith('_')?'%':''}</small></label>`).join('');
 }
@@ -158,7 +158,7 @@ function renderResults(result){
   if(result.backend==='GOODScanner'&&result.health){$('results').className='panel';$('results').textContent=`GOODScanner 已连接 · ${result.health.gameAlive?'检测到游戏窗口':'游戏未运行（连接检查仍有效）'} · 本次没有游戏输入。`;return;}
   const rows=result.demands;
   let html='';
-  if(rows){html=rows.map(r=>`<article class="panel result-card"><div class="panel-heading"><div><h2>${esc(r.name||r.character)}</h2><p class="small muted">${esc(r.id)} · ${r.status==='ready'?'完整配装':'尚未配齐'}</p></div><div class="score">${r.score==null?'—':r.score.toFixed(4)} <small>分</small></div></div><div class="result-meta"><span>达标候选 ${r.eligible_count??0}</span><span>待确认 ${r.deferred_count??0}</span><span>独立上限 ${r.independent_score?.toFixed(4)??'—'}</span>${r.gain!=null?`<span>变化 ${r.gain>=0?'+':''}${r.gain.toFixed(4)}</span>`:''}</div>${itemTable(r.items||[])}</article>`).join('');
+  if(rows){html=rows.map(r=>`<article class="panel result-card"><div class="panel-heading"><div><h2>${esc(r.name||r.character)}</h2><p class="small muted">${esc(r.id)} · ${r.status==='ready'?'完整配装':r.status==='bootstrap'?'建立起始套装':'暂无可行组合'}</p></div><div class="score">${r.score==null?'—':r.score.toFixed(4)} <small>分</small></div></div><div class="result-meta"><span>待处理候选 ${r.eligible_count??0}</span>${r.artifact_energy_recharge_total!=null?`<span>额外充能 ${r.artifact_energy_recharge_total.toFixed(1)}% / ≥${r.artifact_energy_recharge_min??0}%</span>`:""}<span>待确认 ${r.deferred_count??0}</span><span>独立上限 ${r.independent_score?.toFixed(4)??'—'}</span>${r.gain!=null?`<span>变化 ${r.gain>=0?'+':''}${r.gain.toFixed(4)}</span>`:''}</div>${r.bootstrap?`<p class="notice">起始套装预计得分 ${r.bootstrap.expected_score_lower_model.toFixed(3)}；充能达标概率估计 ${(r.bootstrap.feasibility_probability_estimate*100).toFixed(1)}%。${r.bootstrap.samples} 次模拟，${r.bootstrap.search_limited?'已达搜索上限，仅为当前找到的最佳方案':'已完成采样目标的组合搜索'}。先培养这套起点，形成满级基准后再使用概率阈值。</p>`:''}${itemTable(r.items||[])}</article>`).join('');
     if(result.transfers?.length)html+=`<div class="panel"><h3>让装关系</h3>${result.transfers.map(t=>`<p class="small">${esc(t.from_character)}${t.outside_list?'（名单外）':''} → ${esc(t.to_demand)}：${esc(t.name)}</p>`).join('')}</div>`;
     if(result.conflicts?.length)html+=`<p class="warning">${result.conflicts.length} 件装备存在同时使用冲突。</p>`;
   }else if(result.scores){html=`<article class="panel"><h2>强化前后</h2><div class="table-wrap"><table class="score-table"><thead><tr><th>模式</th><th>起点</th><th>当前</th><th>提升</th></tr></thead><tbody>${Object.entries(result.scores).map(([k,s])=>`<tr><td>${k==='borrow'?'允许借用':'不借用'}</td><td>${s.before?.toFixed(4)??'—'}</td><td>${s.after?.toFixed(4)??'—'}</td><td>${s.gain?.toFixed(4)??'—'}</td></tr>`).join('')}</tbody></table></div><p class="small muted">达标候选 ${result.remaining_count??0} · 待确认 ${result.deferred_count??0} · 强化确认 ${result.confirmations??0} 次</p></article>`;
@@ -167,13 +167,13 @@ function renderResults(result){
   if(result.equipment?.length)html+=result.equipment.map(r=>`<article class="panel result-card"><h2>${esc(r.character)} · 穿戴核验</h2><p class="small muted">已核验 ${r.verified_slots}/5 部位 · 实际变更 ${r.changed} 件</p>${r.items.map(a=>`<p class="small">${SLOT[a.slot]} · ${esc(a.name)} · ${a.status==='equipped'?'已穿戴':'原本正确'}</p>`).join('')}</article>`).join('');
   if(html){$('results').className='';$('results').innerHTML=(result.snapshot?.ownership_stale?'<div class="panel note-panel"><p class="warning">这是历史快照计算结果。快照之后发生过换装，表中的装备者与让装关系可能已变化；不借用规划需要新的归属数据。</p></div>':'')+html;}
 }
-function detailFromLogs(logs){for(let i=logs.length-1;i>=0;i--){try{const x=JSON.parse(logs[i]);if(['controller_starting','controller_ready','good_ready'].includes(x.phase))return x.message;if(x.phase==='dust')return `启圣之尘：已分析 ${x.done}/${x.total} 件，不操作游戏。`;if(x.phase==='elixir')return `祝圣之霜：已枚举 ${x.done}/${x.total} 种选择，不操作游戏。`;if(x.phase==='elixir_pairs')return '正在比较两次定制的固定候选方案，不操作游戏。';if(x.level!==undefined&&x.probability_before!==undefined)return `当前已到 +${x.level}，此前改善概率 ${(x.probability_before*100).toFixed(2)}%。`;if(x.eligible!==undefined)return `库存重算：${x.eligible} 件候选达到概率阈值。`;if(x.phase==='equipping_final_builds')return '强化已结束，正在按优先级穿戴最终配装。';if(x.stopped)return '单件决策已结束，正在更新库存并重算下一件。';if(x.phase==='planning')return `正在为 ${x.demands} 个需求计算配装与强化概率，本阶段不操作游戏。`;if(x.phase==='scanning')return x.backend==='GOODScanner'?`GOODScanner 正在扫描五星库存：${x.completed??0} / ${x.total||'读取中'}。`:'正在扫描库存…';if(x.phase==='good_equipment')return `GOODScanner · ${x.stage==='preflight'?'核验五件是否存在':x.stage==='verify'?'复核属性和归属':'执行穿戴'} · ${x.completed??0}/${x.total||5}`;if(x.phase==='enhancing'&&x.demand)return `正在处理需求 ${x.demand}，脚本自行选择候选并逐阶段决策。`;if(x.scan_finished)return '扫描完成，正在计算最优配装。';if(x.preflight)return `换装预检：${x.preflight}`;if(x.slot&&x.status)return `部位 ${SLOT[x.slot]}：${x.status==='equipped'?'穿戴已核验':'原本正确，跳过'}`;}catch{}}return '本地脚本正在处理，请保持游戏界面可用。';}
+function detailFromLogs(logs){for(let i=logs.length-1;i>=0;i--){try{const x=JSON.parse(logs[i]);if(x.message)return x.message;if(x.phase==='good_enhancement')return ({open:'正在定位并核实圣遗物…',step:'正在阶段放入并核验素材…',reconcile:'正在核对上次强化结果…',leave:'正在保存结果并返回背包…'}[x.stage]||'正在核实游戏画面…');if(x.phase==='dust')return `启圣之尘：已分析 ${x.done}/${x.total} 件，不操作游戏。`;if(x.phase==='elixir')return `祝圣之霜：已枚举 ${x.done}/${x.total} 种选择，不操作游戏。`;if(x.phase==='elixir_pairs')return '正在比较两次定制的固定候选方案，不操作游戏。';if(x.level!==undefined&&x.probability_before!==undefined)return x.probability_before==null?`正在建立起始套装：当前 +${x.level}。`:`当前 +${x.level}，上一步提升概率 ${(x.probability_before*100).toFixed(2)}%。`;if(x.eligible!==undefined)return `库存重算：${x.eligible} 件候选达到概率阈值。`;if(x.phase==='equipping_final_builds')return '强化已结束，正在按优先级穿戴最终配装。';if(x.stopped)return '单件决策已结束，正在更新库存并重算下一件。';if(x.phase==='planning')return `正在为 ${x.demands} 个需求计算配装与强化概率，本阶段不操作游戏。`;if(x.phase==='scanning')return x.backend==='GOODScanner'?`GOODScanner 正在扫描五星库存：${x.completed??0} / ${x.total||'读取中'}。`:'正在扫描库存…';if(x.phase==='good_equipment')return `GOODScanner · ${x.stage==='preflight'?'核验五件是否存在':x.stage==='verify'?'复核属性和归属':'执行穿戴'} · ${x.completed??0}/${x.total||5}`;if(x.phase==='enhancing'&&x.demand)return `正在培养 ${x.character||""} · ${x.candidate?.name||"圣遗物"}。`;if(x.scan_finished)return '扫描完成，正在计算最优配装。';if(x.preflight)return `换装预检：${x.preflight}`;if(x.slot&&x.status)return `部位 ${SLOT[x.slot]}：${x.status==='equipped'?'穿戴已核验':'原本正确，跳过'}`;}catch{}}return '本地脚本正在处理，请保持游戏界面可用。';}
 async function refreshState(){
   try{const state=await api('/api/state');busy=state.busy;inventoryPanel?.state(busy);dustUI?.state(state);if(state.hotkey?.last_stop_requested>lastEmergencyAt){lastEmergencyAt=state.hotkey.last_stop_requested;notify('已紧急中断当前任务；未确认记录已保留');}$('hotkey-status').textContent=[state.hotkey?.win_registered?'Win键：有任务时中断，保留系统功能':'',state.hotkey?.registered?state.hotkey.shortcut+'：全局紧急中断':'',state.hotkey?.error||''].filter(Boolean).join(' · ')||'全局快捷键未启用；可使用紧急中断按钮';
     if(state.timings?.length)$('timings').innerHTML=`<table><thead><tr><th>读取类型</th><th>次数</th><th>平均</th><th>P90</th></tr></thead><tbody>${state.timings.map(t=>`<tr><td>${esc(t.name)}</td><td>${t.count}</td><td>${t.average_ms} ms</td><td>${t.p90_ms} ms</td></tr>`).join('')}</tbody></table>`;
     $('connection-dot').className='online';$('connection').textContent=busy?'本地任务运行中':'本地服务已连接';
-    for(const id of ['scan-only','preview','start','equip-loadouts','elixir-calculate','save-preset','template-select'])$(id).disabled=busy;
-    $('resume').disabled=busy||!state.can_resume;$('stop').disabled=!busy;
+    for(const id of ['scan-only','preview','start','equip-loadouts','elixir-calculate'])$(id).disabled=busy;
+    window.__needsReconciliation=state.needs_reconciliation;$('resume').textContent=state.needs_reconciliation?'核对上次结果':'继续上次进度';$('resume').disabled=busy||!(state.can_resume||state.needs_reconciliation);$('stop').disabled=!(state.can_stop??(busy||state.unfinished_batch));
     const job=state.job;activeElixirJob=busy&&job?.kind==='elixir'?job.id:null;$('elixir-stop').hidden=!activeElixirJob;if(!job)return;
     document.querySelector('.steps').hidden=['elixir','dust'].includes(job.kind);
     if(job.kind==='elixir'){
@@ -181,24 +181,24 @@ async function refreshState(){
       for(const line of [...job.logs].reverse()){try{const x=JSON.parse(line);if(x.phase==='longterm'){detail=`长期对照：已模拟 ${x.done}/${x.total} 条未来路径`;break;}if(x.phase==='elixir'){detail=`${x.character}：已枚举 ${x.done}/${x.total} 种单次选择`;break;}if(x.phase==='elixir_pairs'){detail='正在联合比较两次定制候选…';break;}}catch{}}
       $('elixir-status').textContent=job.status==='running'?detail:job.status==='completed'?'建议已计算并保存，可切换优先目标查看。':job.status==='stopped'?'本次计算已停止，设置已保留。':job.result?.error||'计算失败，请查看运行日志。';
     }
-    const labels={running:'任务正在运行',completed:'任务完成',deferred:'已结束，有待处理项',failed:'任务已停止，需要处理',stopped:'已停止，进度保留'};
-    const kind={preview:'离线配装计算',scan:'全库扫描',start:'序贯强化',resume:'继续强化',equip:'保存配装穿戴',elixir:'祝圣之霜建议',dust:'启圣之尘建议'};
+    const labels={running:'任务正在运行',completed:'任务完成',deferred:'已结束，有待处理项',failed:'任务已停止，需要处理',stopped:'本轮已结束，进度已保存'};
+    const kind={preview:'离线配装计算',scan:'扫描库存',reconcile:'核对上次结果',start:'序贯强化',resume:'继续强化',equip:'保存配装穿戴',elixir:'祝圣之霜建议',dust:'启圣之尘建议'};
     $('run-title').textContent=labels[job.status]||job.status;$('run-dot').className='status-dot '+job.status;
     const sec=Math.floor(((job.finished||Date.now()/1000)-job.started));$('elapsed').textContent=`${kind[job.kind]} · ${Math.floor(sec/60)}分${sec%60}秒`;
-    $('run-detail').textContent=job.status==='running'?detailFromLogs(job.logs):job.status==='failed'?(job.result?.error||'请展开日志查看原因。未确认的操作不会自动重复提交。'):job.status==='deferred'?'可处理候选已结束，仍有概率边界或缺少基准的需求。':job.status==='stopped'?'可以在条件恢复后继续未完成的强化任务。':'结果与记录已保存到本机。';
+    $('run-detail').textContent=job.status==='running'?detailFromLogs(job.logs):job.status==='failed'?(job.result?.error||'请展开日志查看原因。未确认的操作不会自动重复提交。'):job.status==='deferred'?'可处理候选已结束，仍有概率边界或缺少基准的需求。':job.status==='stopped'?'可以开始其他任务，也可以选择继续上次进度。':'结果与记录已保存到本机。';
     $('run-progress').hidden=!busy;$('logs').textContent=job.logs.join('\n')||'等待脚本输出…';
     $('save-loadouts').disabled=busy||!job.result?.demands||!['completed','deferred'].includes(job.status);
     const stamp=JSON.stringify(job.result);if(stamp!==renderStamp){renderStamp=stamp;renderResults(job.kind==='elixir'&&job.result?.kind==='elixir'?{...job.result,calculated_at:job.finished}:job.result);}
-    if(!busy&&window.__lastBusy){catalog=await api('/api/catalog');renderCatalog();}
+    if(!busy&&window.__lastBusy){catalog=await api('/api/catalog');renderCatalog();if(job.kind==='scan'&&job.result?.snapshot_id){$('snapshot').value=job.result.snapshot_id;$('fresh-scan').checked=false;snapshotNote();inventoryPanel?.render();persist();}}
     window.__lastBusy=busy;
   }catch(e){$('connection-dot').className='';$('connection').textContent='本地服务未连接';}
 }
 async function saveCurrent(){if(!validateForm($('profile-form')))throw Error('请补全有效的数字与角色配置');const result=await api('/api/config',{id:configId,config:serializeDraft(draft,active)});configId=result.id;persist();$('save-state').textContent='已保存到本地数据库';return result.id;}
-async function launch(kind){
+async function launch(kind,scope="current"){
   if(['preview','equip'].includes(kind)&&!$('snapshot').value){showPage('inventory');throw Error('请先导入或扫描库存');}
   const data={kind};if(['start','preview'].includes(kind))data.config_id=await saveCurrent();
   if(['start','preview','equip'].includes(kind))data.snapshot_id=$('snapshot').value;
-  if(kind==='start')data.fresh=$('fresh-scan').checked;
+  if(kind==='start')data.fresh=$('fresh-scan').checked;if(kind==='scan'||kind==='start')data.scope=scope;
   if(kind==='equip')data.ids=[...document.querySelectorAll('.loadout-check:checked')].map(x=>x.value);
   await api('/api/jobs',data);renderStamp='';latestResult=null;$('results').className='empty-state';$('results').innerHTML='<h3>正在准备本次任务</h3><p>结果由实际库存计算，不使用示例数据。</p>';showPage('run');await refreshState();
 }
@@ -224,7 +224,7 @@ function events(){
   $('character').oninput=e=>{profile().character=e.target.value;profile().character_aliases=[e.target.value];$('aliases').value='';$('editor-title').textContent=e.target.value;changed();};
   $('profile-name').oninput=e=>{profile().name=e.target.value;changed();};$('aliases').oninput=e=>{profile().character_aliases=[profile().character,...e.target.value.split(/[,，、]/).map(x=>x.trim()).filter(Boolean)];changed();};
   $('set-key').onchange=e=>{profile().set_key=e.target.value;profile().set_label=catalog.sets[e.target.value];changed();};
-  $('threshold').oninput=e=>{profile().threshold=e.target.valueAsNumber/100;changed();};$('crit-cap').oninput=e=>{profile().artifact_crit_rate_cap=e.target.valueAsNumber;changed();};
+  $('threshold').oninput=e=>{profile().threshold=e.target.valueAsNumber/100;changed();};$('crit-cap').oninput=e=>{profile().artifact_crit_rate_cap=e.target.valueAsNumber;changed();};$('energy-min').oninput=e=>{profile().artifact_energy_recharge_min=e.target.valueAsNumber;changed();};
   $('weights').oninput=e=>{if(e.target.dataset.weight){profile().weights[e.target.dataset.weight]=e.target.valueAsNumber;changed();}};
   $('main-stats').onclick=e=>{const b=e.target.closest('[data-stat]');if(!b)return;const values=profile().main_stats[b.dataset.slot],i=values.indexOf(b.dataset.stat);if(i<0)values.push(b.dataset.stat);else values.splice(i,1);changed();renderEditor();};
   $('equipment').onchange=e=>{draft.equipment=e.target.value;changed();};$('allocation').onchange=e=>{draft.allocation=e.target.value;changed();};
@@ -251,8 +251,8 @@ function events(){
   $('export-config').onclick=()=>download(serializeDraft(draft,active),draft.name);
   $('import-config').onclick=()=>$('import-file').click();$('import-file').onchange=protect(async e=>{const file=e.target.files[0];if(!file)return;const data=importDraft(JSON.parse(await file.text()));const saved=await api('/api/config',{config:data});draft=saved.config;configId=saved.id;active=0;renderDraft();persist();catalog=await api('/api/catalog');renderCatalog();notify('配置已导入');e.target.value='';});
   for(const [id,kind] of [['check-backend','backend-check'],['preview','preview'],['start','start'],['resume','resume'],['equip-loadouts','equip']])$(id).onclick=protect(()=>launch(kind));
-  $('emergency-stop').onclick=protect(async()=>{await api('/api/emergency-stop',{});notify('已请求紧急中断；保留未确认记录，不自动重试');await refreshState();});
-  $('stop').onclick=protect(async()=>{await api('/api/stop',{});notify('已请求停止，正在保留结果');});
+  $('emergency-stop').onclick=protect(async()=>{await api('/api/emergency-stop',{});notify('已停止输入，正在结束任务');await refreshState();});
+  $('resume').onclick=protect(()=>launch(window.__needsReconciliation?'reconcile':'resume'));$('stop').onclick=protect(async()=>{await api('/api/stop',{});notify('正在结束本轮；已完成的进度会保留');await refreshState();});
   $('save-loadouts').onclick=protect(async()=>{await api('/api/save-loadouts',{});catalog=await api('/api/catalog');renderCatalog();notify('五件配装已保存到本地库');});
   $('download-result').onclick=()=>latestResult&&download(latestResult,'圣遗物配装结果');
   $('refresh-library').onclick=protect(async()=>{catalog=await api('/api/catalog');renderCatalog();});
@@ -282,7 +282,7 @@ export async function boot(){
     }
     renderCatalog();
   }});
-  inventoryPanel=createInventoryUI({api,catalog:()=>catalog,selected:()=>$('snapshot').value,choose:id=>{$('snapshot').value=id;$('fresh-scan').checked=false;snapshotNote();renderElixirForm();persist();},refresh:async()=>{catalog=await api('/api/catalog');renderCatalog();},scan:()=>launch('scan'),notify});
+  inventoryPanel=createInventoryUI({api,catalog:()=>catalog,selected:()=>$('snapshot').value,choose:id=>{$('snapshot').value=id;$('fresh-scan').checked=false;snapshotNote();renderElixirForm();persist();},refresh:async()=>{catalog=await api('/api/catalog');renderCatalog();},scan:scope=>launch('scan',scope),notify});
   inventoryPanel.render();await refreshState();await flushDraft();showPage(window.location.hash?window.location.hash.slice(1):'inventory');
   window.ArtifactWorkbench={getDraft:()=>copy(draft),serialize:()=>serializeDraft(draft,active),showPage,flushDraft,importInventory:file=>inventoryPanel.previewFile(file),
     dispose:()=>{clearTimeout(autosaveTimer);clearTimeout(toastTimer);clearInterval(window.__pollTimer);}};

@@ -147,7 +147,7 @@ class HTTPTests(unittest.TestCase):
 
     def test_running_job_uses_frozen_config_even_when_user_edits_saved_config(self):
         d=config();saved=self.backend.save_config({'config':d})
-        fake=SimpleNamespace(stdout=[],poll=lambda:None)
+        fake=SimpleNamespace(stdout=[],poll=lambda:None,pid=-1)
         with patch.object(self.backend,'snapshot',return_value={'ownership_stale':False,'path':'scan'}),\
              patch('enhancer.ui_server.subprocess.Popen',return_value=fake),patch('enhancer.ui_server.threading.Thread'):
             self.backend.submit({'kind':'preview','config_id':saved['id'],'snapshot_id':'snapshot'})

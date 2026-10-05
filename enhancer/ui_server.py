@@ -39,7 +39,7 @@ def public_report(data):
         result=public_report(data['report']);result['status']=data.get('status',result.get('status'))
         if data.get('equipment'):result['equipment']=public_report(data['equipment']).get('equipment',[])
         return result
-    keys=('status','scores','items','confirmations','conflicts','shared_items','transfers','blocked_demands','error','scan_directory','backend','revision','health','game_input')
+    keys=('status','scores','items','confirmations','conflicts','shared_items','transfers','blocked_demands','error','scan_directory','snapshot_id','backend','revision','health','game_input')
     result={k:data[k] for k in keys if k in data}
     if 'loadouts' in data:
         result['equipment']=[{'id':r['id'],'character':r['character'],'verified_slots':len(r.get('verified',[])),
@@ -47,7 +47,7 @@ def public_report(data):
                               'items':[{'name':a.get('name'),'slot':a.get('slot'),'status':a.get('status')} for a in r.get('items',[])]}
                              for r in data['loadouts']]
     if 'demands' in data:
-        result['demands']=[{k:r[k] for k in ('id','name','character','status','score','before','gain','independent_score','items','eligible_count') if k in r}
+        result['demands']=[{k:r[k] for k in ('id','name','character','status','score','before','gain','independent_score','items','eligible_count','bootstrap','artifact_energy_recharge_min','artifact_energy_recharge_total') if k in r}
                            | {'deferred_count':len(r.get('deferred',[]))} for r in data['demands']]
     result['remaining_count']=len(data.get('remaining_eligible',[]))
     result['deferred_count']=len(data.get('deferred',[]))
@@ -65,6 +65,9 @@ class Backend:
             if data and not self.store.is_deleted(p.parent.name) and self.store.config(p.parent.name) is None:self.store.save_config(p.parent.name,data)
         self.token=secrets.token_urlsafe(32);self.lock=threading.Lock();self.job=None;self.process=None
         self.snapshots={};self.jobs={};self._catalog_cache=None;self._catalog_time=0
+        self.stop_available=False
+        from .job_control import recover_orphaned_jobs
+        recover_orphaned_jobs(self.runtime)
         self.cleanup_previews={}
         self.import_previews={}
         previous=sorted((self.directory/'jobs').glob('*/job.json'),key=lambda p:p.stat().st_mtime,reverse=True)
@@ -208,14 +211,14 @@ class Backend:
                 'ownership_stale':bool(equip_time>modified or source),'label':imported['label'] if imported else path.parent.name,'derived':bool(source),
                 'source':'import' if imported else 'scan','engine':'GOODScanner' if goodscan else None,
                 'import_summary':imported['summary'] if imported else None}
-            if goodscan:self.snapshots[identifier]['label']='GOODScanner · 五星库存'
+            if goodscan:self.snapshots[identifier]['label']='GOODScanner · '+goodscan.get('scope','五星库存')
         profiles=[{'id':p.stem,'data':read(p)} for p in (self.root/'profiles').glob('*.json')]
         library=read(self.runtime/'loadouts/library.json',{'loadouts':{}})
         saved=[{'id':identifier,'name':revs[-1]['name'],'character':revs[-1]['character'],'revision':revs[-1]['revision'],
                 'items':revs[-1]['items']} for identifier,revs in library.get('loadouts',{}).items() if revs]
         from .import_inventory import DATA
         result={'profiles':profiles,'sets':SET_LABELS,'main_options':MAINS,'means':{k:float(v) for k,v in MEANS.items()},
-                'engines':{'scan':'GOODScanner','equipment':'GOODScanner','enhancement':'yas / 霜华兼容执行器',
+                'engines':{'scan':'GOODScanner','equipment':'GOODScanner','enhancement':'GOODScanner',
                            'installed':(self.root/'bin/goodscanner/workbench_goodscanner.exe').is_file()},
                 'characters':sorted(set(DATA['characters'].values())),
                 'presets':self.store.presets(),
@@ -258,7 +261,13 @@ class Backend:
         active=read(self.runtime/'active-batch.json',{})
         session=read(self.runtime/'session.json',{})
         from .telemetry import recent
-        return {'job':job,'hotkey':self.hotkey.status() if getattr(self,'hotkey',None) else None,'can_resume':active.get('status') in ('stopped','needs-attention'),
+        unfinished=active.get('status') not in (None,'finished','finished-with-deferred','cancelled')
+        failed_game=bool(self.job and self.job.get('kind') in ('scan','start','resume','equip','reconcile') and self.job.get('status')=='failed' and not self.job.get('stop_requested'))
+        self.stop_available=unfinished or failed_game
+        from .job_control import pending_operations
+        return {'job':job,'hotkey':self.hotkey.status() if getattr(self,'hotkey',None) else None,'can_resume':active.get('status') in ('stopped','needs-attention','cancelled'),
+                'unfinished_batch':unfinished,'can_stop':bool(self.process and self.process.poll() is None) or self.stop_available,
+                'needs_reconciliation':bool(pending_operations(self.runtime)),
                 'controller':session.get('state','stopped'),'busy':bool(self.process and self.process.poll() is None),
                 'timings':recent(self.runtime/'timings.jsonl')}
 
@@ -266,8 +275,11 @@ class Backend:
         with self.lock:
             if self.process and self.process.poll() is None:raise ValueError('已有任务运行中，请先等待完成或停止')
             kind=payload.get('kind')
-            if kind not in ('scan','preview','start','resume','equip','elixir','dust','backend-check'):raise ValueError('未知操作')
+            if kind not in ('scan','preview','start','resume','equip','elixir','dust','backend-check','reconcile'):raise ValueError('未知操作')
             request={'kind':kind}
+            if kind in ('scan','start'):
+                request['scope']=payload.get('scope','current')
+                if request['scope'] not in ('all','current'):raise ValueError('扫描范围无效')
             if kind in ('preview','start','elixir','dust'):
                 config=self.config_path(payload.get('config_id'));data=self.store.config(payload['config_id'])
                 request['config']=str(config)
@@ -289,20 +301,24 @@ class Backend:
             if kind=='resume' and not self.state()['can_resume']:raise ValueError('没有可继续的强化任务')
             if kind in ('scan','start','equip'):
                 active=read(self.runtime/'active-batch.json',{})
-                if active.get('status') not in (None,'finished','finished-with-deferred'):
+                from .job_control import pending_operations
+                if pending_operations(self.runtime):raise ValueError('上次强化结果仍待核对。请先点击“核对上次结果”；导入文件和计算配装不受影响。')
+                if kind!='scan' and active.get('status') not in (None,'finished','finished-with-deferred','cancelled'):
                     raise ValueError('还有未完成的强化任务，请先继续该任务')
             identifier=uuid.uuid4().hex;directory=self.directory/'jobs'/identifier;directory.mkdir(parents=True)
             if 'config' in request:
                 compile_config(data,directory/'config')
                 request['config']=str(directory/'config')
             request['output']=str(directory/'result.json');save(directory/'request.json',request)
-            env=dict(__import__('os').environ,PYTHONIOENCODING='utf-8',PYTHONUNBUFFERED='1')
+            env=dict(__import__('os').environ,PYTHONIOENCODING='utf-8',PYTHONUNBUFFERED='1',ENHANCER_JOB_STOP_FILE=str(directory/'stop.signal'))
             process=subprocess.Popen([sys.executable,'-u','-m','enhancer.ui_worker',str(directory/'request.json')],cwd=self.root,
                                      stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace',env=env,
                                      creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
             job={'id':identifier,'kind':kind,'status':'running','started':time.time(),'logs':deque(maxlen=200),
-                 'output':request['output'],'request':request,'stop_requested':False}
+                 'output':request['output'],'request':request,'stop_requested':False,'worker_pid':process.pid}
+            save(directory/'job.json',{k:v for k,v in job.items() if k!='logs'})
             self.process=process;self.job=job;self.jobs[identifier]=job
+            if kind in ('scan','start','resume','equip','reconcile'):self.stop_available=True
             threading.Thread(target=self.monitor,args=(process,job,directory),daemon=True).start()
             return {'id':identifier}
 
@@ -314,25 +330,45 @@ class Backend:
         output=read(job['output'],{})
         job['status']='stopped' if job['stop_requested'] else 'completed' if code==0 else 'failed'
         if code==0 and output.get('status')=='finished-with-deferred':job['status']='deferred'
+        if job['stop_requested'] and job['kind'] in ('start','resume','equip'):
+            from .job_control import cancel_batch
+            cancel_batch(self.runtime)
+        if self.job and self.job['id']==job['id'] and job['kind'] in ('scan','start','resume','equip','reconcile'):
+            self.stop_available=job['status']=='failed' and not job['stop_requested']
         save(directory/'job.json',{k:v for k,v in job.items() if k!='logs'})
-        with self.lock:
-            if not (self.process and self.process.poll() is None):
-                try:
-                    from .storage_management import finish_cleanup
-                    cleanup=finish_cleanup(self.runtime,job)
-                    save(directory/'screenshot-cleanup.json',cleanup)
-                except Exception as exc:
-                    save(directory/'screenshot-cleanup.json',{'error':str(exc)})
+        # Disk cleanup must never hold the task-submission/stop lock.
+        try:
+            from .storage_management import finish_cleanup
+            cleanup=finish_cleanup(self.runtime,job)
+            save(directory/'screenshot-cleanup.json',cleanup)
+        except Exception as exc:
+            save(directory/'screenshot-cleanup.json',{'error':str(exc)})
         self._catalog_cache=None
 
     def stop(self,expected=None):
         with self.lock:
-            if not self.process or self.process.poll() is not None:return {'stopped':False}
-            if expected and (expected.get('job_id')!=self.job['id'] or expected.get('kind')!=self.job['kind']):
+            if expected and (not self.job or expected.get('job_id')!=self.job['id'] or expected.get('kind')!=self.job['kind']):
                 raise ValueError('任务已变化，请刷新状态后再停止')
+            if expected and (not self.process or self.process.poll() is not None):return {'stopped':False}
+            math_running=self.process and self.process.poll() is None and self.job and self.job['kind'] in ('preview','elixir','dust')
+            if not math_running:(self.runtime/'stop.signal').touch()
+            if self.job and __import__('re').fullmatch(r'[0-9a-f]{32}',self.job.get('id','')):
+                marker=self.directory/'jobs'/self.job['id']/'stop.signal';marker.parent.mkdir(parents=True,exist_ok=True);marker.touch()
+            if not self.process or self.process.poll() is not None:
+                from .job_control import cancel_batch
+                ended=cancel_batch(self.runtime)
+                if self.job and self.job.get('kind') in ('scan','start','resume','equip','reconcile') and self.job.get('status')=='failed':
+                    self.job.update(stop_requested=True,status='stopped');ended=True
+                    if __import__('re').fullmatch(r'[0-9a-f]{32}',self.job.get('id','')):
+                        save(self.directory/'jobs'/self.job['id']/'job.json',{k:v for k,v in self.job.items() if k!='logs'})
+                self.stop_available=False
+                return {'stopped':ended,'batch_cancelled':ended}
             self.job['stop_requested']=True
             if self.job['kind'] in ('preview','elixir','dust'):self.process.terminate()
-            else:(self.runtime/'stop.signal').touch()
+            else:
+                (self.runtime/'stop.signal').touch()
+                from .job_control import terminate_job
+                threading.Thread(target=terminate_job,args=(self.process,self.runtime),daemon=True).start()
             return {'stopped':True}
 
     def emergency_stop(self):
@@ -422,7 +458,7 @@ def make_handler(backend):
 def serve(port=8766):
     backend=Backend();server=ThreadingHTTPServer(('127.0.0.1',port),make_handler(backend))
     from .hotkey import EmergencyHotkey
-    backend.hotkey=EmergencyHotkey(backend.emergency_stop,lambda:bool(backend.process and backend.process.poll() is None));backend.hotkey.start()
+    backend.hotkey=EmergencyHotkey(backend.emergency_stop,lambda:bool(backend.process and backend.process.poll() is None) or backend.stop_available);backend.hotkey.start()
     url=f'http://127.0.0.1:{server.server_port}'
     save(backend.directory/'server.json',{'url':url,'pid':__import__('os').getpid()})
     print(f'圣遗物工坊：{url}',flush=True)

@@ -23,7 +23,7 @@ def write_report(result,path):
         scores=[f'{row[k]:.4f}' if row.get(k) is not None else '—' for k in ('score','independent_score','gain')]
         lines.append(f"| {cell(row['name'])} ({row['id']}) | {' | '.join(scores)} | {row.get('eligible_count','—')} |")
     lines+=['','priority 为按优先级依次分配的贪心结果，不保证全局联合最优。independent 允许需求之间争用装备，不是可同时穿戴的保证。',
-            '不同角色的评分体系可不同，分数不直接相加。未配齐的需求不会被当作零分基准自动强化。',
+            '不同角色的评分体系可不同，分数不直接相加。缺少满级基准时先搜索可培养的起始套装；形成真实基准后再启用序贯替换阈值。',
             f"同时使用冲突：{len(result['conflicts'])}；未配齐：{len(result.get('blocked_demands',[]))}。"]
     for row in result['demands']:
         lines+=['',f"## {cell(row['name'])} ({row['id']})",'',
@@ -34,7 +34,9 @@ def write_report(result,path):
             values=[SLOTS[a['slot']],a['name'],f"+{a['level']} / {STATS.get(a['main'],a['main'])}",
                     stats,a['equipped'] or '闲置',a['id']]
             lines.append('| '+' | '.join(cell(v) for v in values)+' |')
-        if row['status']!='ready':lines+=['','缺少满足约束的完整 +20 配装，需人工补足或调整配置。']
+        if row.get('bootstrap'):
+            b=row['bootstrap'];lines+=['',f"建立起始套装：预计分数 {b['expected_score_lower_model']:.4f}，充能达标概率估计 {b['feasibility_probability_estimate']:.2%}；{b['samples']} 次模拟；搜索受限：{b['search_limited']}。",b['scope']]
+        elif row['status']!='ready':lines+=['','库存中缺少满足约束的完整组合，暂不能建立起始套装。']
     lines+=['','## 让装关系','']
     for t in result['transfers']:
         outside='（名单外）' if t['outside_list'] else ''

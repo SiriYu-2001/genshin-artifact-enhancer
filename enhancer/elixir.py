@@ -13,7 +13,7 @@ from itertools import combinations
 import numpy as np
 
 from .model import Artifact, ROLLS, MEANS, SLOTS
-from .capped import CappedInventory, main_crit
+from .capped import CappedInventory, main_crit,main_energy
 
 COST = dict(zip(SLOTS, (1, 1, 2, 4, 3)))
 # Definition source only. Domain drops have a separate 1/5 four-line rate.
@@ -79,7 +79,22 @@ def tail_metrics(values,tail,moment,thresholds,minimum_gain=0.):
     """P(delta > minimum_gain), E[max(delta,0)]; retain gains below the goal."""
     indices=np.searchsorted(values,thresholds+minimum_gain+1e-10,side='right')
     positive=np.searchsorted(values,thresholds+1e-10,side='right')
-    return tail[indices],np.maximum(0,moment[positive]-thresholds*tail[positive])
+    gain=np.zeros_like(thresholds,dtype=float);valid=np.isfinite(thresholds)
+    gain[valid]=np.maximum(0,moment[positive[valid]]-thresholds[valid]*tail[positive[valid]])
+    return tail[indices],gain
+
+
+def constrained_thresholds(complement,baseline,main,cr_count,energy_count=0,*,cr_base=F(0),energy_base=F(0),other_base=F(0),energy_weight=F(0)):
+    """Joint CR/ER outcomes retain correlation between feasibility and score."""
+    cr,cd=roll_sums('critRate_',cr_count);er,ed=roll_sums('enerRech_',energy_count)
+    cuts=[];probs=[]
+    for e,ne in er:
+        gain_er=F(e,100)
+        for c,nc in cr:
+            response=complement.query(cr_base+F(c,100),main,energy_base+gain_er)
+            cuts.append(float('inf') if response is None else float(baseline-other_base-response-energy_weight*gain_er/MEANS['enerRech_']))
+            probs.append(nc*ne/(cd*ed))
+    return np.array(cuts),np.array(probs)
 
 
 def target_metrics(values,tail,moment,thresholds,headroom):
@@ -99,16 +114,15 @@ class ElixirAdvisor:
         if self.inventory.baseline is None:raise ValueError('Complete mature baseline required')
         self.responses={}
 
-    def thresholds(self,slot,main,bound,cr_count):
-        key=slot,main,bound,cr_count
+    def thresholds(self,slot,main,bound,cr_count,energy_count=0):
+        key=slot,main,bound,cr_count,energy_count
         if key not in self.responses:
             artifact=Artifact('__proposed_definition__',self.profile.data['set_key'],slot,main,20,())
             complement=self.inventory.complement(artifact,bound)
             if not complement.points:raise ValueError('No feasible complement')
-            support,den=roll_sums('critRate_',cr_count)
             baseline=self.inventory.baseline.hi if bound=='lo' else self.inventory.baseline.lo
-            thresholds=np.array([float(baseline-complement.query(F(cents,100),main_crit(artifact))) for cents,n in support])
-            self.responses[key]=thresholds,np.array([n/den for cents,n in support])
+            self.responses[key]=constrained_thresholds(complement,baseline,main_crit(artifact),cr_count,energy_count,
+                energy_base=main_energy(artifact),energy_weight=self.profile.weight('enerRech_') if self.inventory.energy_floor else F(0))
         return self.responses[key]
 
     def conditional(self,slot,main,selected,rolls,minimum_gain=0.):
@@ -119,12 +133,13 @@ class ElixirAdvisor:
             for hits,hit_probability in upgrade_counts(rolls):
                 counts=tuple(h+1 for h in hits)
                 cr_count=counts[keys.index('critRate_')] if 'critRate_' in keys else 0
+                er_count=counts[keys.index('enerRech_')] if self.inventory.energy_floor and 'enerRech_' in keys else 0
                 spec=tuple(sorted((k,n,self.profile.weight(k)) for k,n in zip(keys,counts)
-                                  if k!='critRate_' and self.profile.weight(k)>0))
+                                  if k!='critRate_' and not (self.inventory.energy_floor and k=='enerRech_') and self.profile.weight(k)>0))
                 values,tail,moment=other_distribution(spec)
                 mass=float(type_probability*hit_probability)
                 for i,bound in enumerate(('lo','hi')):
-                    thresholds,cr_probability=self.thresholds(slot,main,bound,cr_count)
+                    thresholds,cr_probability=self.thresholds(slot,main,bound,cr_count,er_count)
                     probability,gain=tail_metrics(values,tail,moment,thresholds,minimum_gain)
                     total[i]+=mass*float(np.dot(cr_probability,probability))
                     total[2+i]+=mass*float(np.dot(cr_probability,gain))

@@ -10,6 +10,8 @@ from enhancer import good_backend as good
 from test_import_inventory import good_artifact
 
 
+WINDOW={'window':{'found':True,'width':1920,'height':1080}}
+
 class GoodBackendTests(unittest.TestCase):
     def scan_receipt(self,client,root):
         client.state={'directory':str(root)}
@@ -20,7 +22,18 @@ class GoodBackendTests(unittest.TestCase):
         return receipt
 
     def client(self,root):
-        return good.GoodClient({'endpoint':'http://127.0.0.1:19265','token':'synthetic','instance':'test'},root)
+        return good.GoodClient({'endpoint':'http://127.0.0.1:19265','token':'synthetic','instance':'test','directory':str(root)},root)
+
+    def test_native_focus_loss_is_reported_without_replaying_input(self):
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp);job=str(uuid.uuid4());(root/'failures').mkdir()
+            (root/'failures'/f'input-{job}.json').write_text(json.dumps({'jobId':job,'reason':'game_focus_lost','inputBlocked':True}))
+            c=self.client(root);c.request=Mock(side_effect=[WINDOW,{'jobId':job}])
+            with self.assertRaisesRegex(RuntimeError,'原神已失去前台焦点'):
+                c.run('/equip',{'equip':[{}]},root/'job','equip')
+            self.assertEqual(c.request.call_count,2)
+            self.assertEqual(sum(v.args[0]=='POST' for v in c.request.call_args_list),1)
+            self.assertEqual(json.loads((root/'job/request.json').read_text())['state'],'submitted')
 
     def test_only_owned_loopback_and_allowlisted_operations(self):
         for url in ('https://example.com','http://192.168.1.2:123','http://user@127.0.0.1:1','http://127.0.0.1:1/extra'):
@@ -32,24 +45,25 @@ class GoodBackendTests(unittest.TestCase):
 
     def test_post_timeout_is_not_replayed(self):
         with TemporaryDirectory() as tmp:
-            c=self.client(tmp);c.request=Mock(side_effect=requests.ReadTimeout('synthetic timeout'))
+            c=self.client(tmp);c.request=Mock(side_effect=[WINDOW,requests.ReadTimeout('synthetic timeout')])
             with self.assertRaises(requests.ReadTimeout):c.run('/equip',{'equip':[]},Path(tmp)/'job','equip')
-            self.assertEqual(c.request.call_count,1)
+            self.assertEqual(c.request.call_count,2)
+            self.assertEqual(sum(c.args[0]=='POST' for c in c.request.call_args_list),1)
             state=json.loads((Path(tmp)/'job/request.json').read_text(encoding='utf-8'))
             self.assertEqual(state['state'],'submitting')
 
     def test_other_job_or_missing_result_never_counts_as_success(self):
         job=str(uuid.uuid4())
         with TemporaryDirectory() as tmp:
-            c=self.client(tmp);c.request=Mock(side_effect=[{'jobId':job},{'jobId':str(uuid.uuid4()),'state':'completed'}])
+            c=self.client(tmp);c.request=Mock(side_effect=[WINDOW,{'jobId':job},{'jobId':str(uuid.uuid4()),'state':'completed'}])
             with self.assertRaisesRegex(RuntimeError,'编号'):c.run('/scan',{},Path(tmp)/'first','scan')
-            c.request=Mock(side_effect=[{'jobId':job},{'jobId':job,'state':'completed'},{'results':[]}])
+            c.request=Mock(side_effect=[WINDOW,{'jobId':job},{'jobId':job,'state':'completed'},{'results':[]}])
             with self.assertRaisesRegex(RuntimeError,'缺项'):c.run('/scan',{},Path(tmp)/'second','scan')
 
     def test_verify_cannot_accept_a_successful_mutating_result(self):
         job=str(uuid.uuid4())
         with TemporaryDirectory() as tmp:
-            c=self.client(tmp);c.request=Mock(side_effect=[{'jobId':job},{'jobId':job,'state':'completed'},
+            c=self.client(tmp);c.request=Mock(side_effect=[WINDOW,{'jobId':job},{'jobId':job,'state':'completed'},
                 {'results':[{'id':'equip:0','status':'success'}]}])
             with self.assertRaisesRegex(RuntimeError,'未完成'):c.run('/equip',{'equip':[{}],'verifyOnly':True},Path(tmp)/'job','verify')
 
@@ -109,7 +123,7 @@ class GoodBackendTests(unittest.TestCase):
             self.assertEqual(fresh_scan(),'native-snapshot');scanner.assert_called_once()
         with patch.object(good,'apply_loadouts',return_value={'status':'verified'}) as equip:
             self.assertEqual(apply('library',['a'],'scan')['status'],'verified')
-            equip.assert_called_once_with('library',['a'],'scan',None,'strict')
+            equip.assert_called_once_with('library',['a'],'scan',None,'strict',full_audit=False)
 
 
 if __name__=='__main__':unittest.main()

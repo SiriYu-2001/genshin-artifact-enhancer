@@ -86,7 +86,7 @@ class ElixirUI(unittest.TestCase):
     def test_submission_freezes_config_and_validates_target(self):
         with TemporaryDirectory() as tmp:
             backend=Backend(Path(tmp));saved=backend.save_config({'config':config()})
-            proc=Mock();proc.poll.return_value=None
+            proc=Mock();proc.pid=-1;proc.poll.return_value=None
             with patch.object(backend,'snapshot',return_value={'path':'test-scan','ownership_stale':False}),\
                  patch('enhancer.ui_server.subprocess.Popen',return_value=proc),patch('enhancer.ui_server.threading.Thread'):
                 with self.assertRaises(ValueError):backend.submit({'kind':'elixir','config_id':saved['id'],'demand_id':'missing'})

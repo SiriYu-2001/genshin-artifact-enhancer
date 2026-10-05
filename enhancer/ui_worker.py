@@ -16,12 +16,12 @@ def _main():
     try:
         if kind=='scan':
             from .workflow import fresh_scan
-            scan=fresh_scan()
-            result={'status':'completed','scan_directory':str(scan)}
+            scan=fresh_scan(request.get('scope','current'))
+            import hashlib
+            result={'status':'completed','scan_directory':str(scan),'snapshot_id':hashlib.sha256(str(scan.resolve()).encode()).hexdigest()[:16]}
         elif kind=='resume':
-            from .__main__ import ensure_controller
             from .batch import main as batch
-            ensure_controller();batch()
+            batch()
             state=json.loads((ROOT/'runtime/active-batch.json').read_text(encoding='utf-8'))
             result={'status':state['status'],'directory':state['directory'],
                     'report':json.loads((Path(state['directory'])/'summary.json').read_text(encoding='utf-8'))}
@@ -35,6 +35,9 @@ def _main():
             client=ensure_backend()
             result={'status':'completed','backend':'GOODScanner','revision':REVISION,'game_input':False,
                     'health':client.request('GET','/health')}
+        elif kind=='reconcile':
+            from .good_enhancement import main as reconcile
+            result=reconcile(reconcile_only=True)
         elif kind in ('elixir','dust'):
             if kind=='elixir':from .elixir_report import calculate
             else:from .dust_report import calculate
@@ -61,6 +64,9 @@ def _main():
                 scan=None
                 if snapshot:
                     scan=materialize_snapshot(snapshot['path'],snapshot.get('updates'),output.parent/('scan-'+output.parent.name))
+                else:
+                    from .workflow import fresh_scan
+                    scan=fresh_scan(request.get('scope','current'))
                 if data['mode']=='single':
                     from .workflow import start
                     start(config/(data['demands'][0]['id']+'.json'),'borrow' if data['equipment']=='borrow' else 'no-borrow',scan)
@@ -92,7 +98,7 @@ def _main():
 
 def main():
     request=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
-    if request['kind'] not in ('scan','start','resume','equip','backend-check'):
+    if request['kind'] not in ('scan','start','resume','equip','backend-check','reconcile'):
         return _main()
     from .game_lease import GameLease
     try:

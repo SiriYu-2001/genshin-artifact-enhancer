@@ -438,3 +438,7 @@ edit(ui,'let label:String=cleaned.split([\':\',\'：\',\'(\',\'（\']).next().un
      'let label:String=cleaned.split([\':\',\'：\',\'(\',\'（\']).next().unwrap_or("").chars().filter(|c|(\'\\u{4e00}\'..=\'\\u{9fff}\').contains(c)).collect();')
 
 print('GOODScanner adapter applied')
+
+# Keep enhancement adapter reproducible on the same pinned upstream checkout.
+import runpy
+runpy.run_path(str(Path(__file__).with_name("patch_good_enhancement.py")), run_name="__main__")

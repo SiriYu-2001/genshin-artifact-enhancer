@@ -8,6 +8,7 @@ import time
 import hashlib
 
 from .navigation import ROOT, Navigation
+from .job_control import stop_requested
 from .model import Profile, Stat, UncertainObservation, evaluate
 from .report import load_scan, select_build
 from .capped import CappedInventory, build_score
@@ -24,7 +25,7 @@ def save(path, value):
 def apply_updates(inventory, updates):
     return [replace(a,level=updates[a.id]['level'],
                     stats=tuple(Stat.from_dict(s) for s in updates[a.id]['substats']),
-                    equipped=updates[a.id].get('equipped',a.equipped))
+                    equipped=updates[a.id].get('equipped',a.equipped),special=updates[a.id].get('enhancement_kind',a.special))
             if a.id in updates else a for a in inventory]
 
 
@@ -34,6 +35,11 @@ def replan(inventory, profile, names,cache=None):
     if cache is not None and cache.get('policy')==policy and cache.get('mature')==mature:
         baseline=cache['baseline']
     else:baseline=CappedInventory(inventory,profile)
+    if baseline.baseline is None:
+        from .bootstrap import decisions
+        choices,proposal=decisions(inventory,profile,names,committed=cache.get('bootstrap_plan') if cache is not None else None)
+        if cache is not None:cache['bootstrap_plan']=proposal
+        return choices
     previous={}
     if cache is not None:
         # The complete mature bucket frontier fixes every baseline/complement
@@ -54,7 +60,11 @@ def replan(inventory, profile, names,cache=None):
             updated[a.id]=(a,decision)
             continue
         try:
-            decision=evaluate(a,inventory,profile,baseline)
+            if a.special=='unknown':
+                potential=evaluate(replace(a,special='ordinary'),inventory,profile,baseline)
+                decision=dict(potential,action='reread' if 'probability_lower' not in potential else 'retain' if potential.get('pruned_by_upper_bound') else 'inspect',
+                              reason='no_improving_completion' if potential.get('pruned_by_upper_bound') else 'verify_source_in_game',source_unknown=True)
+            else:decision=evaluate(a,inventory,profile,baseline)
             if a.special!='ordinary' and decision['action']=='reread':
                 # Guarantees restrict which normal roll histories can occur.
                 # If NO history can win, their unknown probabilities do not
@@ -94,7 +104,7 @@ def write_results(batch, original, inventory, profile, names, decisions):
             'substats':[{'key':s.key,'value':float(s.value)} for s in a.stats]} for a in changed]
     result={'status':batch['status'],'scores':scores,'items':items,
             'confirmations':len(receipts),'resource_accounting':False,
-            'remaining_eligible':[d for d in decisions if d['action']=='enhance'],
+            'remaining_eligible':[d for d in decisions if d['action'] in ('enhance','inspect')],
             'deferred':[d for d in decisions if d['action'] in ('reread','unsupported')]}
     save(directory/'summary.json',result)
     lines=[f"# {profile.data['character']}圣遗物整批实验",'',f"已培养 {len(items)} 件；确认强化 {len(receipts)} 次。按用户要求不统计消耗。",'',
@@ -148,7 +158,7 @@ def main():
                 raise RuntimeError(f'Pending operation does not match current batch: {root}')
             # Child first reads the result of this exact operation. It never
             # repeats the consuming click; only a verified result clears pending.
-            for attempt in range(4):
+            for attempt in range(1):
                 result=subprocess.run([sys.executable,'-m','enhancer','run'],cwd=ROOT)
                 if result.returncode==0:break
             if result.returncode:raise RuntimeError(f'Unreconciled enhancement: {root}')
@@ -166,8 +176,9 @@ def main():
         nav.yas().close()
     profile=Profile.load(batch['profile'])
     profile.data['allowed_equipped_characters']=['*'] if batch['ownership']=='borrow' else profile.data['character_aliases']
+    decision_cache={'bootstrap_plan':batch.get('bootstrap_plan')}
     while True:
-        if (ROOT/'runtime/stop.signal').exists():
+        if stop_requested(ROOT):
             batch['status']='stopped'
             save(manifest,batch)
             return
@@ -180,12 +191,13 @@ def main():
         if cached.get('stamp')==stamp:
             decisions=cached['decisions']
         else:
-            decisions=replan(inventory,profile,names)
+            decisions=replan(inventory,profile,names,cache=decision_cache)
+            batch['bootstrap_plan']=decision_cache.get('bootstrap_plan')
             save(cache_path,{'stamp':stamp,'decisions':decisions})
         save(directory/'decisions.json',decisions)
         save(directory/'scores.json',summaries(original,inventory,profile,names))
         write_results(batch,original,inventory,profile,names,decisions)
-        candidates=[d for d in decisions if d['action']=='enhance']
+        candidates=[d for d in decisions if d['action'] in ('enhance','inspect')]
         print(json.dumps({'eligible':len(candidates),'candidates':[{k:d[k] for k in ('id','name','level','probability_lower')} for d in candidates]},ensure_ascii=False),flush=True)
         if not candidates:
             batch['status']='finished-with-deferred' if any(d['action'] in ('reread','unsupported') for d in decisions) else 'finished'
@@ -202,32 +214,25 @@ def main():
         save(ROOT/'runtime/active-run.json',active)
         batch.update(status='running',current=candidate['id'])
         save(manifest,batch)
-        for attempt in range(4):
-            if (ROOT/'runtime/stop.signal').exists():
+        for attempt in range(1):
+            if stop_requested(ROOT):
                 batch['status']='stopped'
                 save(manifest,batch)
                 return
             result=subprocess.run([sys.executable,'-m','enhancer','run'],cwd=ROOT)
             if result.returncode==0:break
-            # Retry the local state machine, never resend a consuming click.
-            # It re-observes the current UI and loads saved actual item state.
-            # An outstanding confirmation is reconciled before anything else.
-            print(json.dumps({'retry_item':candidate['id'],'attempt':attempt+1},ensure_ascii=False),flush=True)
-            time.sleep(.5)
+            print(json.dumps({'phase':'stopped','target':candidate['id'],'message':'本件执行失败，已停止；没有自动重发操作'},ensure_ascii=False),flush=True)
         if (run_dir/'target-state.json').exists():
             updates[candidate['id']]=json.loads((run_dir/'target-state.json').read_text(encoding='utf-8'))
             save(updates_path,updates)
         if result.returncode:
             batch['status']='needs-attention'
             save(manifest,batch)
-            raise RuntimeError(f'Item stopped; evidence: {run_dir}')
-        # Only leave enhancement when this entire artifact has finished its policy.
-        nav=Navigation()
-        state=nav.observe('enhance-1920')['text']
-        if not title_has_name(state['title'],names[candidate['id']]):raise RuntimeError('Unexpected end screen')
-        nav._navigation_click('close_material_picker',1840,48)
-        nav.ensure_bag()
-        nav.yas().close()
+            error_path=run_dir/'last-error.json'
+            details=json.loads(error_path.read_text(encoding='utf-8')).get('message') if error_path.exists() else None
+            raise RuntimeError(details or f'本件执行已停止，详情见：{run_dir}')
+        # Native GOODScanner already verified and left this target.
+
 
 
 if __name__=='__main__':main()

@@ -7,6 +7,7 @@ import sys
 import time
 
 from .navigation import ROOT, Navigation
+from .job_control import stop_requested
 from .batch import apply_updates, save
 from .campaign import Campaign, allocate, plan, compare_claims
 from .report import load_scan
@@ -32,7 +33,7 @@ def start(config,scan=None):
     manifest=ROOT/'runtime/active-batch.json'
     if manifest.exists():
         previous=read(manifest)
-        if previous['status'] not in ('finished','finished-with-deferred') or any((Path(p)/'pending.json').exists() for p in previous['runs']):
+        if previous['status'] not in ('finished','finished-with-deferred','cancelled') or any((Path(p)/'pending.json').exists() for p in previous['runs']):
             raise RuntimeError('Finish or resume the existing run before starting a campaign')
     from .workflow import fresh_scan
     scan=Path(scan) if scan else fresh_scan()
@@ -46,7 +47,7 @@ def start(config,scan=None):
     save(directory/'inventory-updates.json',{})
     state={'kind':'campaign','directory':str(directory),'config':str(snapshot),
            'scan_directory':str(scan.resolve()),'status':'prepared','runs':[],'jobs':[],
-           'started':time.time(),'revision':0}
+           'started':time.time(),'revision':0,'bootstrap_plans':{r['id']:r['bootstrap'] for r in before['demands'] if r.get('bootstrap')}}
     if manifest.exists():manifest.replace(directory/'previous-batch.json')
     save(manifest,state)
     run()
@@ -80,30 +81,27 @@ def execute_current(state,names):
                 ('scan_directory','profile','ownership','target_id','run_directory','inventory_updates_path','campaign')):
             raise RuntimeError('Pending operation belongs to a different job')
     save(active_path,active)
-    for attempt in range(4):
-        if (ROOT/'runtime/stop.signal').exists():
+    # The native executor retries observations, never entire consuming steps.
+    for attempt in range(1):
+        if stop_requested(ROOT):
             state['status']='stopped'
             save(ROOT/'runtime/active-batch.json',state)
             return False
         result=subprocess.run([sys.executable,'-m','enhancer','run'],cwd=ROOT)
         sync_updates(state)
         if result.returncode==0:break
-        print(json.dumps({'phase':'retry','demand':job['demand_id'],'target':job['target_id'],'attempt':attempt+1}),flush=True)
+        print(json.dumps({'phase':'stopped','demand':job['demand_id'],'target':job['target_id'],'message':'本件执行失败，已停止；没有自动重发操作'},ensure_ascii=False),flush=True)
     if result.returncode:
         state['status']='needs-attention'
         save(ROOT/'runtime/active-batch.json',state)
-        raise RuntimeError(f"Campaign item stopped: {job['run_directory']}")
+        error_path=Path(job['run_directory'])/'last-error.json'
+        details=read(error_path).get('message') if error_path.exists() else None
+        raise RuntimeError(details or f"本件执行已停止，详情见：{job['run_directory']}")
     if pending_path.exists():raise RuntimeError('Child returned with an unresolved operation')
     if not (Path(job['run_directory'])/'decision-final.json').exists():
         raise RuntimeError('Child did not record a final policy decision')
-    nav=Navigation()
-    try:
-        text=nav.observe('enhance-1920')['text']
-        if not title_has_name(text['title'],names[job['target_id']]):raise RuntimeError('Unexpected item end screen')
-        nav._navigation_click('close_material_picker',1840,48)
-        nav.ensure_bag()
-    finally:
-        nav.yas().close()
+    # GOODScanner leaves the verified target after its final policy decision.
+    # Do not re-read it through the obsolete yas/Frostflake path.
     job['status']='completed'
     state['revision']+=1
     save(ROOT/'runtime/active-batch.json',state)
@@ -114,7 +112,7 @@ def report(state,current):
     directory=Path(state['directory'])
     before=read(directory/'allocation-before.json')
     initial={r['id']:r for r in before['demands']}
-    demands=[{k:r[k] for k in ('id','character','name','status','score','independent_score','items','eligible_count','deferred')}
+    demands=[{k:r[k] for k in ('id','character','name','status','score','independent_score','items','eligible_count','deferred','bootstrap','artifact_energy_recharge_min','artifact_energy_recharge_total') if k in r}
              for r in current['demands']]
     for row in demands:
         row['before']=initial[row['id']]['score']
@@ -148,10 +146,12 @@ def run():
     previous=read(directory/'allocation-before.json')
     decision_cache={}
     while True:
-        if (ROOT/'runtime/stop.signal').exists():
+        if stop_requested(ROOT):
             state['status']='stopped';save(manifest,state);return
         inventory=apply_updates(original,sync_updates(state))
-        current=plan(inventory,campaign,names,cache=decision_cache)
+        print(json.dumps({'phase':'planning','message':'正在按优先级计算各角色的配装和待强化目标','demands':len(campaign.demands)},ensure_ascii=False),flush=True)
+        current=plan(inventory,campaign,names,cache=decision_cache,bootstrap_plans=state.get('bootstrap_plans',{}))
+        state['bootstrap_plans']={r['id']:r['bootstrap'] for r in current['demands'] if r.get('bootstrap')}
         save(directory/'plan.json',current)
         with (directory/'allocation-history.jsonl').open('a',encoding='utf-8') as f:
             f.write(json.dumps({'revision':state['revision'],'changes':compare_claims(previous['claims'],current['claims'])},ensure_ascii=False)+'\n')
@@ -175,5 +175,5 @@ def run():
              'run_directory':str(run_dir),'status':'running','probability_lower':candidate['probability_lower']}
         state['jobs'].append(job);state['runs'].append(str(run_dir))
         save(manifest,state)
-        print(json.dumps({'phase':'enhancing','demand':job['demand_id'],'candidate':candidate},ensure_ascii=False),flush=True)
+        print(json.dumps({'phase':'enhancing','demand':job['demand_id'],'character':selected['profile']['character'],'candidate':candidate},ensure_ascii=False),flush=True)
         if not execute_current(state,names):return

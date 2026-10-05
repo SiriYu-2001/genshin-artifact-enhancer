@@ -50,6 +50,7 @@ def validate(data):
         for key,value in weights.items():number(value,key,0,100)
         number(p.get('threshold'),'概率阈值',0,1)
         number(p.get('artifact_crit_rate_cap'),'暴击率计分上限',0,200)
+        number(p.setdefault('artifact_energy_recharge_min',0),'圣遗物额外充能下限',0,300)
         if p.get('resource_target_score') is not None:number(p['resource_target_score'],'资源规划目标分数',0,1000)
         aliases=p.get('character_aliases',[])
         if not isinstance(aliases,list) or any(not isinstance(a,str) or not a.strip() or len(a)>50 for a in aliases):raise ValueError('角色别名无效')
@@ -103,6 +104,7 @@ def materialize_snapshot(scan,updates,output):
     for row in raw:
         a=latest[f'{scan.name}:{row["index"]}']
         row['level']=a.level
+        row['enhancement_kind']=a.special;row['special']=a.special=='defined'
         row['substats']=[{'key':s.key,'value':float(s.value),'pending':s.pending} for s in a.stats]
         row['equip_raw']=a.equipped.removeprefix('UNKNOWN:') if a.equipped.startswith('UNKNOWN:') else a.equipped+'已装备' if a.equipped else ''
     output.mkdir(parents=True,exist_ok=True)

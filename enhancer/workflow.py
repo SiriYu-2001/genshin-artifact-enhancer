@@ -10,9 +10,9 @@ from .report import load_scan, create_report
 from .batch import save
 
 
-def fresh_scan():
+def fresh_scan(scope='all'):
     from .good_backend import scan_inventory
-    return scan_inventory()
+    return scan_inventory(scope)
 
 
 def legacy_fresh_scan():
@@ -70,11 +70,11 @@ def start(profile_path,ownership,scan=None):
     manifest=ROOT/'runtime/active-batch.json'
     if manifest.exists():
         old=json.loads(manifest.read_text(encoding='utf-8'))
-        if old['status'] not in ('finished','finished-with-deferred','stopped') or any((Path(p)/'pending.json').exists() for p in old['runs']):
+        if old['status'] not in ('finished','finished-with-deferred','stopped','cancelled') or any((Path(p)/'pending.json').exists() for p in old['runs']):
             raise RuntimeError('Previous batch must finish before starting a new character')
     scan=Path(scan) if scan else fresh_scan()
     report=create_report(scan,profile)
-    if not report['baseline_usable']:raise RuntimeError('Fresh inventory baseline is not usable')
+    if not report['baseline_usable'] and not report.get('bootstrap'):raise RuntimeError('库存不能组成符合约束的满级或待培养套装')
     directory=ROOT/'runtime'/time.strftime('batch-%Y%m%d-%H%M%S')
     directory.mkdir()
     save(directory/'profile.json',profile.data)
@@ -83,7 +83,8 @@ def start(profile_path,ownership,scan=None):
     if manifest.exists():manifest.replace(ROOT/'runtime'/time.strftime('previous-batch-%Y%m%d-%H%M%S.json'))
     save(manifest,{'directory':str(directory),'scan_directory':str(scan.resolve()),
                   'profile':str(directory/'profile.json'),'ownership':ownership,'runs':[],
-                  'status':'prepared','started':time.time(),'entrypoint':'start'})
-    print(json.dumps({'phase':'enhancing','baseline':report['best_available_build']['displayed_score'],'directory':str(directory)},ensure_ascii=False),flush=True)
+                  'status':'prepared','started':time.time(),'entrypoint':'start','bootstrap_plan':report.get('bootstrap')})
+    print(json.dumps({'phase':'enhancing','baseline':report['best_available_build']['displayed_score'] if report['best_available_build'] else None,
+                      'bootstrap':report.get('bootstrap'),'directory':str(directory)},ensure_ascii=False),flush=True)
     from .batch import main
     main()

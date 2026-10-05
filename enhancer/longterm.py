@@ -11,7 +11,7 @@ import math
 import numpy as np
 
 from .model import SLOTS, ROLLS, MEANS
-from .capped import components, main_crit
+from .capped import components, main_crit, main_energy, energy_bounds, Point, pareto as frontier_pareto
 from .elixir import TYPE_WEIGHT
 from .elixir_plans import sample_candidate
 from .dust import infer_bases
@@ -46,8 +46,11 @@ def seed_for(seed, *parts):
     return int.from_bytes(hashlib.sha256(repr((seed,parts)).encode()).digest()[:8], 'little')
 
 
-def pareto(rows, cap):
+def pareto(rows, cap, energy_floor=0):
     """Rows=(crit, weighted other substats, main crit). Group by main crit."""
+    if energy_floor:
+        points=frontier_pareto((Point(float(r[0]),float(r[1]),(),float(r[2]),float(r[3])) for r in np.asarray(rows).reshape(-1,4)),cap,energy_floor)
+        return np.array([(p.crit,p.other,p.main_crit,p.energy) for p in points],dtype=float).reshape(-1,4)
     rows = np.asarray(rows,dtype=float).reshape(-1,3)
     if not len(rows): return rows
     result=[]
@@ -63,14 +66,14 @@ def pareto(rows, cap):
 
 class Inventory:
     """Small numeric projection of the existing exact-rational inventory DP."""
-    def __init__(self, base, future, cap, weight):
-        self.cap=cap; self.weight=weight; self.cache={}; self.buckets={}
+    def __init__(self, base, future, cap, weight, energy_floor=0):
+        self.cap=cap; self.weight=weight; self.energy_floor=energy_floor; self.dim=4 if energy_floor else 3; self.cache={}; self.buckets={}
         self.base=base;self.future=future
         for slot in SLOTS:
             for target in (False,True):
                 rows=base[slot,target]
                 extra=future[slot,target]
-                self.buckets[slot,target]=pareto(np.concatenate((rows,extra)),cap)
+                self.buckets[slot,target]=pareto(np.concatenate((rows,extra)),cap,self.energy_floor)
 
     def frontier(self, slot=None, target=True):
         key=slot,target
@@ -78,14 +81,14 @@ class Inventory:
         result=[]
         for off in SLOTS:
             if slot is not None and not target and slot!=off:continue
-            rows=np.zeros((1,3))
+            rows=np.zeros((1,self.dim))
             for s in SLOTS:
                 if s==slot:continue
                 bucket=self.buckets[s,s!=off]
-                rows=pareto((rows[:,None,:]+bucket[None,:,:]).reshape(-1,3),self.cap)
+                rows=pareto((rows[:,None,:]+bucket[None,:,:]).reshape(-1,self.dim),self.cap,self.energy_floor)
                 if not len(rows):break
             result.extend(rows)
-        answer=pareto(result,self.cap);self.cache[key]=answer
+        answer=pareto(result,self.cap,self.energy_floor);self.cache[key]=answer
         return answer
 
     def new_frontier(self):
@@ -96,32 +99,35 @@ class Inventory:
         """
         result=[]
         for off in SLOTS:
-            old=np.zeros((1,3));new=np.empty((0,3))
+            old=np.zeros((1,self.dim));new=np.empty((0,self.dim))
             for s in SLOTS:
                 k=s,s!=off
-                old_bucket=pareto(self.base[k],self.cap)
-                fresh_bucket=pareto(self.future[k],self.cap)
-                via_new=(new[:,None,:]+self.buckets[k][None,:,:]).reshape(-1,3)
-                first_new=(old[:,None,:]+fresh_bucket[None,:,:]).reshape(-1,3)
-                new=pareto(np.concatenate((via_new,first_new)),self.cap)
-                old=pareto((old[:,None,:]+old_bucket[None,:,:]).reshape(-1,3),self.cap)
+                old_bucket=pareto(self.base[k],self.cap,self.energy_floor)
+                fresh_bucket=pareto(self.future[k],self.cap,self.energy_floor)
+                via_new=(new[:,None,:]+self.buckets[k][None,:,:]).reshape(-1,self.dim)
+                first_new=(old[:,None,:]+fresh_bucket[None,:,:]).reshape(-1,self.dim)
+                new=pareto(np.concatenate((via_new,first_new)),self.cap,self.energy_floor)
+                old=pareto((old[:,None,:]+old_bucket[None,:,:]).reshape(-1,self.dim),self.cap,self.energy_floor)
             result.extend(new)
-        return pareto(result,self.cap)
+        return pareto(result,self.cap,self.energy_floor)
 
     def score(self, rows):
+        if self.energy_floor:rows=rows[rows[:,3]>=self.energy_floor-1e-10]
         if not len(rows):return -np.inf
         return float(np.max(rows[:,1]+self.weight*np.minimum(rows[:,0],np.maximum(0,self.cap-rows[:,2]))))
 
-    def candidate(self, slot, target, cr, other, main):
+    def candidate(self, slot, target, cr, other, main, energy=0):
         points=self.frontier(slot,target)
+        if self.energy_floor:points=points[points[:,3]+energy>=self.energy_floor-1e-10]
         if not len(points):return -np.inf
         return float(np.max(points[:,1]+other+self.weight*np.minimum(points[:,0]+cr,np.maximum(0,self.cap-points[:,2]-main))))
 
     def candidates(self,slot,target,rows):
         points=self.frontier(slot,target)
         if not len(points) or not len(rows):return -np.inf
-        return float(np.max(points[:,1,None]+rows[None,:,1]+self.weight*
-                      np.minimum(points[:,0,None]+rows[None,:,0],np.maximum(0,self.cap-points[:,2,None]-rows[None,:,2]))))
+        scores=points[:,1,None]+rows[None,:,1]+self.weight*np.minimum(points[:,0,None]+rows[None,:,0],np.maximum(0,self.cap-points[:,2,None]-rows[None,:,2]))
+        if self.energy_floor:scores=np.where(points[:,3,None]+rows[None,:,3]>=self.energy_floor-1e-10,scores,-np.inf)
+        return float(np.max(scores))
 
 
 def project(pool, profile, bound):
@@ -130,15 +136,16 @@ def project(pool, profile, bound):
         if a.level!=20 or not profile.allows(a):continue
         cr,other=components(a,profile)
         row=[float(getattr(cr,bound)),float(getattr(other,bound)),float(main_crit(a))]
+        if profile.data.get('artifact_energy_recharge_min',0):row.append(float(getattr(energy_bounds(a),bound)))
         base[a.slot,False].append(row)
         if a.set_key==profile.data['set_key']:base[a.slot,True].append(row)
-    return {k:np.asarray(v).reshape(-1,3) for k,v in base.items()}
+    return {k:np.asarray(v).reshape(-1,4 if profile.data.get('artifact_energy_recharge_min',0) else 3) for k,v in base.items()}
 
 
 def sample_natural(profile,n,rng):
     """Sample domain drops incl both sets, all slots/mains and weighted types."""
     slot=rng.integers(0,5,n); target=rng.random(n)<.5
-    cr=np.zeros(n);other=np.zeros(n);maincr=np.zeros(n);legal=np.zeros(n,dtype=bool)
+    cr=np.zeros(n);other=np.zeros(n);maincr=np.zeros(n);energy=np.zeros(n);legal=np.zeros(n,dtype=bool)
     keys=list(ROLLS);tiers=np.array([[float(x) for x in ROLLS[k]] for k in keys])
     coef=np.array([float(profile.weight(k)/MEANS[k]) if k!='critRate_' else 0 for k in keys])
     for si,s in enumerate(SLOTS):
@@ -161,7 +168,8 @@ def sample_natural(profile,n,rng):
                 vals[np.arange(m),hit]+=inc*(rolls>step)
             cr[idx]=np.sum(vals*(chosen==keys.index('critRate_')),axis=1)
             other[idx]=np.sum(vals*coef[chosen],axis=1)
-    return slot,target,np.column_stack((cr,other,maincr)),legal
+            energy[idx]=np.sum(vals*(chosen==keys.index('enerRech_')),axis=1)+(51.8 if main=='enerRech_' else 0)
+    return slot,target,np.column_stack((cr,other,maincr,energy) if profile.data.get('artifact_energy_recharge_min',0) else (cr,other,maincr)),legal
 
 
 def summary(values, probability=False):
@@ -200,7 +208,8 @@ def dust_samples(profile,artifact,pair,metadata,g,n,seed):
         for bound in ('lo','hi'):
             values=v+np.array([float(getattr(bases[k],bound)) for k in keys])
             cr=values[:,keys.index('critRate_')] if 'critRate_' in keys else np.zeros(n)
-            bounds.append((cr,np.sum(values*coef,axis=1)))
+            energy=(values[:,keys.index('enerRech_')] if 'enerRech_' in keys else np.zeros(n))+float(main_energy(artifact))
+            bounds.append((cr,np.sum(values*coef,axis=1),energy) if profile.data.get('artifact_energy_recharge_min',0) else (cr,np.sum(values*coef,axis=1)))
         out.append(bounds)
     return out
 
@@ -227,9 +236,10 @@ def calculate(pool,profile,result,options,metadata=None,progress=lambda x:None):
     options=settings(options);n=options['samples'];seed=options['seed'];metadata=metadata or {}
     actions,total_actions=shortlist(result)
     cap=float(profile.data['artifact_crit_rate_cap']);w=float(profile.weight('critRate_')/MEANS['critRate_'])
+    energy_floor=float(profile.data.get('artifact_energy_recharge_min',0));dim=4 if energy_floor else 3
     bases=[project(pool,profile,b) for b in ('lo','hi')]
-    empty={k:np.empty((0,3)) for k in bases[0]}
-    initial=[Inventory(b,empty,cap,w) for b in bases]
+    empty={k:np.empty((0,dim)) for k in bases[0]}
+    initial=[Inventory(b,empty,cap,w,energy_floor) for b in bases]
     baseline=[inv.score(inv.frontier()) for inv in initial]
     if not all(math.isfinite(v) for v in baseline):raise ValueError('长期预测需要完整满级基准')
     days=sorted(set((0,options['days']//2,options['days'])))
@@ -243,7 +253,7 @@ def calculate(pool,profile,result,options,metadata=None,progress=lambda x:None):
     for a in actions:
         actionseed=seed_for(seed,'action',result['kind'],a.get('id'),a['slot'],a.get('main'),tuple(a['selected']))
         if result['kind']=='elixir':
-            samples=sample_candidate(profile,a,n,actionseed)
+            samples=sample_candidate(profile,a,n,actionseed,with_energy=bool(energy_floor))
             draws.append([[samples,samples]])
         else:
             artifact=lookup[a['id']]
@@ -261,7 +271,7 @@ def calculate(pool,profile,result,options,metadata=None,progress=lambda x:None):
                     mask=(slots[:take]==si)&legal[:take]
                     if t:mask &=targets[:take]
                     future[s,t]=points[:take][mask]
-            invs=[Inventory(b,future,cap,w) for b in bases]
+            invs=[Inventory(b,future,cap,w,energy_floor) for b in bases]
             scores=[inv.score(inv.frontier()) for inv in invs]
             if np.any(legal[:take]):
                 forced=[inv.score(inv.new_frontier()) for inv in invs]
@@ -279,8 +289,9 @@ def calculate(pool,profile,result,options,metadata=None,progress=lambda x:None):
                 cases=[[],[]];tcases=[[],[]]
                 for hypothesis in draws[ai]:
                     for bi in (0,1):
-                        cr,other=hypothesis[bi]
-                        forced=invs[bi].candidate(a['slot'],is_target,float(cr[i]),float(other[i]),main)
+                        cr,other=hypothesis[bi][:2]
+                        energy=float(hypothesis[bi][2][i]) if energy_floor else 0
+                        forced=invs[bi].candidate(a['slot'],is_target,float(cr[i]),float(other[i]),main,energy)
                         # Dust: all complements omit this slot, so the old and new versions
                         # can never coexist. Retention happens AFTER farming, with observed D.
                         old=scores[1-bi]

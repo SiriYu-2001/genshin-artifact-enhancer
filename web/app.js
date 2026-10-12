@@ -153,6 +153,7 @@ function itemTable(items){return `<div class="table-wrap"><table><thead><tr><th>
 function renderResults(result){
   if(!result)return;
   latestResult=result;$('download-result').disabled=false;
+  if(result.status==='stopped'){$('results').className='panel';$('results').textContent='任务已停止。已完成的记录保留，可回到库存导入或配置页面开始新任务。';return;}
   if(result.kind==='dust'){dustUI.render(result);$('results').className='panel';$('results').textContent='启圣之尘建议已保存，请在左侧“启圣之尘”页查看。';return;}
   if(result.kind==='elixir'){renderElixirResult(result);$('results').className='panel';$('results').textContent='祝圣之霜建议已保存，请在左侧“祝圣之霜”页查看。';return;}
   if(result.backend==='GOODScanner'&&result.health){$('results').className='panel';$('results').textContent=`GOODScanner 已连接 · ${result.health.gameAlive?'检测到游戏窗口':'游戏未运行（连接检查仍有效）'} · 本次没有游戏输入。`;return;}
@@ -183,9 +184,12 @@ async function refreshState(){
     }
     const labels={running:'任务正在运行',completed:'任务完成',deferred:'已结束，有待处理项',failed:'任务已停止，需要处理',stopped:'本轮已结束，进度已保存'};
     const kind={preview:'离线配装计算',scan:'扫描库存',reconcile:'核对上次结果',start:'序贯强化',resume:'继续强化',equip:'保存配装穿戴',elixir:'祝圣之霜建议',dust:'启圣之尘建议'};
-    $('run-title').textContent=labels[job.status]||job.status;$('run-dot').className='status-dot '+job.status;
+    $('run-title').textContent=state.stopping?'正在停止输入并退出后台':labels[job.status]||job.status;$('run-dot').className='status-dot '+job.status;
     const sec=Math.floor(((job.finished||Date.now()/1000)-job.started));$('elapsed').textContent=`${kind[job.kind]} · ${Math.floor(sec/60)}分${sec%60}秒`;
     $('run-detail').textContent=job.status==='running'?detailFromLogs(job.logs):job.status==='failed'?(job.result?.error||'请展开日志查看原因。未确认的操作不会自动重复提交。'):job.status==='deferred'?'可处理候选已结束，仍有概率边界或缺少基准的需求。':job.status==='stopped'?'可以开始其他任务，也可以选择继续上次进度。':'结果与记录已保存到本机。';
+    if(state.stopping)$('run-detail').textContent='正在确认工作进程和游戏后台退出。完成后可以导入库存或开始新任务。';
+    else if(state.stop_error)$('run-detail').textContent='停止未完成：'+state.stop_error;
+    else if(job.status==='stopped')$('run-detail').textContent=state.can_resume?'已停止，可以继续上次强化或开始其他任务。':'已停止。扫描不能续扫，请回到“库存导入”重新扫描或导入 JSON。';
     $('run-progress').hidden=!busy;$('logs').textContent=job.logs.join('\n')||'等待脚本输出…';
     $('save-loadouts').disabled=busy||!job.result?.demands||!['completed','deferred'].includes(job.status);
     const stamp=JSON.stringify(job.result);if(stamp!==renderStamp){renderStamp=stamp;renderResults(job.kind==='elixir'&&job.result?.kind==='elixir'?{...job.result,calculated_at:job.finished}:job.result);}
@@ -193,7 +197,7 @@ async function refreshState(){
     window.__lastBusy=busy;
   }catch(e){$('connection-dot').className='';$('connection').textContent='本地服务未连接';}
 }
-async function saveCurrent(){if(!validateForm($('profile-form')))throw Error('请补全有效的数字与角色配置');const result=await api('/api/config',{id:configId,config:serializeDraft(draft,active)});configId=result.id;persist();$('save-state').textContent='已保存到本地数据库';return result.id;}
+async function saveCurrent(){if(!validateForm($('profile-form')))throw Error('请补全有效的数字与角色配置');const result=await api('/api/config',{id:configId,config:serializeDraft(draft,active)});configId=result.id;persist();$('save-state').textContent='已保存到本地数据库';if(result.recovered_missing)notify('原配置记录不存在，已将当前表单保存为新配置');return result.id;}
 async function launch(kind,scope="current"){
   if(['preview','equip'].includes(kind)&&!$('snapshot').value){showPage('inventory');throw Error('请先导入或扫描库存');}
   const data={kind};if(['start','preview'].includes(kind))data.config_id=await saveCurrent();
@@ -251,7 +255,7 @@ function events(){
   $('export-config').onclick=()=>download(serializeDraft(draft,active),draft.name);
   $('import-config').onclick=()=>$('import-file').click();$('import-file').onchange=protect(async e=>{const file=e.target.files[0];if(!file)return;const data=importDraft(JSON.parse(await file.text()));const saved=await api('/api/config',{config:data});draft=saved.config;configId=saved.id;active=0;renderDraft();persist();catalog=await api('/api/catalog');renderCatalog();notify('配置已导入');e.target.value='';});
   for(const [id,kind] of [['check-backend','backend-check'],['preview','preview'],['start','start'],['resume','resume'],['equip-loadouts','equip']])$(id).onclick=protect(()=>launch(kind));
-  $('emergency-stop').onclick=protect(async()=>{await api('/api/emergency-stop',{});notify('已停止输入，正在结束任务');await refreshState();});
+  $('emergency-stop').onclick=protect(async()=>{await api('/api/emergency-stop',{});notify('已发出中断请求，正在确认后台退出');await refreshState();});
   $('resume').onclick=protect(()=>launch(window.__needsReconciliation?'reconcile':'resume'));$('stop').onclick=protect(async()=>{await api('/api/stop',{});notify('正在结束本轮；已完成的进度会保留');await refreshState();});
   $('save-loadouts').onclick=protect(async()=>{await api('/api/save-loadouts',{});catalog=await api('/api/catalog');renderCatalog();notify('五件配装已保存到本地库');});
   $('download-result').onclick=()=>latestResult&&download(latestResult,'圣遗物配装结果');
@@ -259,6 +263,7 @@ function events(){
 }
 export async function boot(){
   const data=await api('/api/bootstrap');token=data.token;catalog=data.catalog;storageInstance=data.instance||'default';
+  if($('build-version'))$('build-version').textContent=`${data.build?.version||'开发版'} · ${data.build?.backend||'GOODScanner'} · 离线运行`;
   const fallback=catalog.profiles.find(p=>p.id==='奥黛塔')||catalog.profiles[0];if(!fallback)throw Error('没有可用的初始角色配置');
   draft={version:1,name:'我的圣遗物培养计划',mode:'single',equipment:'borrow',allocation:'priority',demands:[makeDemand(fallback.data)],scenarios:null};
   let localContext=null;

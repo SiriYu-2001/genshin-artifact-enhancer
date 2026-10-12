@@ -193,20 +193,41 @@ edit(ui,'if let Some(ocr_set_key) = fuzzy_match_map(cleaned, &mappings.artifact_
 
 # Clear all artifact filter conditions before an all-inventory scan; then re-read count.
 reset = r"""
-pub fn workbench_reset_artifact_filters(ctrl:&mut GenshinGameController,ocr:&dyn ImageToText<RgbImage>)->Result<()> {
-    ctrl.click_at(167.0,1018.0);yas::utils::sleep(450);
-    let labels=|frame:&RgbImage| -> Result<(String,String,String)> {
+pub fn workbench_artifact_filter_labels(frame:&RgbImage,ocr:&dyn ImageToText<RgbImage>)->Result<(String,String,String)> {
         let read=|rect| -> Result<String> {
             let image=min_channel_preprocess(&workbench_crop(frame,rect));
             Ok(ocr.image_to_text(&image,false)?.chars().filter(|c|!c.is_whitespace()).collect())
         };
         Ok((read((20.0,22.0,230.0,50.0))?,read((135.0,992.0,105.0,53.0))?,read((437.0,992.0,105.0,53.0))?))
-    };
-    let (heading,reset,apply)=labels(&ctrl.capture_game()?)?;
-    anyhow::ensure!(heading=="圣遗物筛选" && reset=="重置" && apply=="确认","Artifact filter controls not verified");
+}
+fn workbench_wait_artifact_filter(ctrl:&GenshinGameController,ocr:&dyn ImageToText<RgbImage>,require_reset:bool)->Result<()> {
+    let mut observations=Vec::new();let mut last_frame=None;
+    for attempt in 0..8 {
+        anyhow::ensure!(!ctrl.is_cancelled(),"Artifact filter verification cancelled");
+        let frame=ctrl.capture_game()?;
+        let (heading,reset,apply)=workbench_artifact_filter_labels(&frame,ocr)?;
+        let verified=heading=="圣遗物筛选" && apply=="确认" && (!require_reset || reset=="重置");
+        observations.push(serde_json::json!({"attempt":attempt,"heading":heading,"reset":reset,"apply":apply}));
+        if verified{return Ok(());}
+        last_frame=Some(frame);if attempt<7{yas::utils::sleep(100);}
+    }
+    let job=std::env::var("WORKBENCH_ACTIVE_JOB").ok().and_then(|s|uuid::Uuid::parse_str(&s).ok()).map(|v|v.to_string()).unwrap_or_else(||"offline".into());
+    let dir=std::path::Path::new("failures").join(format!("filter-{job}"));std::fs::create_dir_all(&dir)?;
+    if let Some(frame)=last_frame{frame.save(dir.join("frame.png"))?;}
+    std::fs::write(dir.join("observations.json"),serde_json::to_vec_pretty(&serde_json::json!({"requireReset":require_reset,"observations":observations,"subsequentClickSent":false}))?)?;
+    anyhow::bail!("Artifact filter controls not verified: {}; no subsequent filter click sent; diagnostics={}",serde_json::to_string(&observations)?,dir.display())
+}
+pub fn workbench_reset_artifact_filters(ctrl:&mut GenshinGameController,ocr:&dyn ImageToText<RgbImage>)->Result<()> {
+    let (heading,reset,apply)=workbench_artifact_filter_labels(&ctrl.capture_game()?,ocr)?;
+    // A resumed task may already be inside the drawer. Clicking its toggle
+    // again would close it; partial drawer evidence is re-read without input.
+    if heading!="圣遗物筛选" && !(reset=="重置" && apply=="确认") {
+        ctrl.click_at(167.0,1018.0);yas::utils::sleep(450);
+    }
+    // Re-read fresh complete frames; never repeat the open/reset/apply clicks.
+    workbench_wait_artifact_filter(ctrl,ocr,true)?;
     ctrl.click_at(165.0,1020.0);yas::utils::sleep(200);
-    let (heading,_,apply)=labels(&ctrl.capture_game()?)?;
-    anyhow::ensure!(heading=="圣遗物筛选" && apply=="确认","Artifact filter page changed");
+    workbench_wait_artifact_filter(ctrl,ocr,false)?;
     ctrl.click_at(480.0,1020.0);yas::utils::sleep(350);Ok(())
 }
 """

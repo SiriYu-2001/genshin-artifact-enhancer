@@ -13,6 +13,16 @@ from test_import_inventory import good_artifact
 WINDOW={'window':{'found':True,'width':1920,'height':1080}}
 
 class GoodBackendTests(unittest.TestCase):
+    def test_stage_error_reports_failed_field_for_old_and_new_backend(self):
+        for reason in ('Unreadable material count fraction',
+                       'Material count OCR: wide=[]; isolated=[]; labels=[]: Unreadable isolated material count fraction'):
+            message=good.explain_failure('Stage observation unreadable: '+reason+'; no confirmation sent')
+            self.assertIn('材料栏数量',message)
+            self.assertIn('未点击强化',message)
+            self.assertIn('stage-observations.json',message)
+        self.assertIn('当前等级',good.explain_failure('Stage observation unreadable: Current level OCR: []'))
+        self.assertIn('无法完整识别',good.explain_failure('Stage observation unreadable: unknown field'))
+
     def scan_receipt(self,client,root):
         client.state={'directory':str(root)}
         receipt={'jobId':'synthetic','complete':True,'termination':'Exhausted','expected':2,'visited':2,

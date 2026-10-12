@@ -45,6 +45,7 @@ def terminate_job(process,runtime,grace=1.5):
     try:process.wait(timeout=2)
     except Exception:
         if process.poll() is None:process.kill()
+        process.wait(timeout=2)
 
 
 def cancel_batch(runtime):

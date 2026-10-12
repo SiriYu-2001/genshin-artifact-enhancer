@@ -66,6 +66,7 @@ class Backend:
         self.token=secrets.token_urlsafe(32);self.lock=threading.Lock();self.job=None;self.process=None
         self.snapshots={};self.jobs={};self._catalog_cache=None;self._catalog_time=0
         self.stop_available=False
+        self.stopping=False;self.stop_error=None
         from .job_control import recover_orphaned_jobs
         recover_orphaned_jobs(self.runtime)
         self.cleanup_previews={}
@@ -83,7 +84,9 @@ class Backend:
             raise ValueError('配置ID无效')
         path=self.directory/'configs'/identifier
         data=self.store.config(identifier)
-        if data is None:raise ValueError('配置不存在')
+        if data is None:
+            if self.store.is_deleted(identifier):raise ValueError('配置已删除，请从回收站恢复，或导出草稿后另建配置')
+            raise ValueError('配置不存在')
         if not (path/'config.json').exists():compile_config(data,path)
         return path
 
@@ -93,11 +96,19 @@ class Backend:
 
     def save_config(self,payload):
         identifier=payload.get('id') or uuid.uuid4().hex
-        if payload.get('id'):self.config_path(identifier)
+        recovered=False
+        if payload.get('id'):
+            try:self.config_path(identifier)
+            except ValueError as exc:
+                if str(exc)!='配置不存在':raise
+                identifier=uuid.uuid4().hex;recovered=True
         data=compile_config(payload['config'],self.directory/'configs'/identifier)
         revision=self.store.save_config(identifier,data)
         self._catalog_cache=None
-        return {'id':identifier,'config':data,'revision':revision}
+        return {'id':identifier,'config':data,'revision':revision,'recovered_missing':recovered}
+
+    def busy(self):
+        return self.stopping or bool(self.process and self.process.poll() is None) or bool(self.job and self.job.get('status')=='running')
 
     def storage(self):
         from .storage_management import inspect
@@ -109,7 +120,7 @@ class Backend:
     def import_inventory(self,payload):
         from .import_inventory import parse_document,commit_import
         with self.lock:
-            if self.process and self.process.poll() is None:raise ValueError('任务运行中不能导入库存，请先停止或等待完成')
+            if self.busy():raise ValueError('任务运行中不能导入库存，请先停止或等待完成')
             self.import_previews={k:v for k,v in self.import_previews.items() if time.time()-v[0]<600}
             action=payload.get('action')
             if action=='preview':
@@ -268,12 +279,12 @@ class Backend:
         return {'job':job,'hotkey':self.hotkey.status() if getattr(self,'hotkey',None) else None,'can_resume':active.get('status') in ('stopped','needs-attention','cancelled'),
                 'unfinished_batch':unfinished,'can_stop':bool(self.process and self.process.poll() is None) or self.stop_available,
                 'needs_reconciliation':bool(pending_operations(self.runtime)),
-                'controller':session.get('state','stopped'),'busy':bool(self.process and self.process.poll() is None),
+                'controller':session.get('state','stopped'),'busy':self.busy(),'stopping':self.stopping,'stop_error':self.stop_error,
                 'timings':recent(self.runtime/'timings.jsonl')}
 
     def submit(self,payload):
         with self.lock:
-            if self.process and self.process.poll() is None:raise ValueError('已有任务运行中，请先等待完成或停止')
+            if self.busy():raise ValueError('正在结束上一个任务，请等待停止完成' if self.stopping else '已有任务运行中，请先等待完成或停止')
             kind=payload.get('kind')
             if kind not in ('scan','preview','start','resume','equip','elixir','dust','backend-check','reconcile'):raise ValueError('未知操作')
             request={'kind':kind}
@@ -323,19 +334,27 @@ class Backend:
             return {'id':identifier}
 
     def monitor(self,process,job,directory):
-        with (directory/'stdout.log').open('w',encoding='utf-8') as log:
-            for line in process.stdout:
-                log.write(line);log.flush();job['logs'].append(line.rstrip())
-        code=process.wait();job['exit_code']=code;job['finished']=time.time()
-        output=read(job['output'],{})
-        job['status']='stopped' if job['stop_requested'] else 'completed' if code==0 else 'failed'
-        if code==0 and output.get('status')=='finished-with-deferred':job['status']='deferred'
-        if job['stop_requested'] and job['kind'] in ('start','resume','equip'):
-            from .job_control import cancel_batch
-            cancel_batch(self.runtime)
-        if self.job and self.job['id']==job['id'] and job['kind'] in ('scan','start','resume','equip','reconcile'):
-            self.stop_available=job['status']=='failed' and not job['stop_requested']
-        save(directory/'job.json',{k:v for k,v in job.items() if k!='logs'})
+        # An inherited stdout pipe may stay open after the worker exits. It must
+        # not keep the job "running" or block a subsequent import forever.
+        def drain():
+            with (directory/'stdout.log').open('w',encoding='utf-8') as log:
+                for line in process.stdout:
+                    log.write(line);log.flush();job['logs'].append(line.rstrip())
+        reader=threading.Thread(target=drain,daemon=True);reader.start()
+        code=process.wait();reader.join(timeout=.5)
+        with self.lock:
+            job['exit_code']=code;job['finished']=time.time()
+            output=read(job['output'],{})
+            job['status']='stopped' if job['stop_requested'] else 'completed' if code==0 else 'failed'
+            if code==0 and output.get('status')=='finished-with-deferred':job['status']='deferred'
+            # An old completion callback must never cancel a newer campaign.
+            if self.job is job:
+                if job['stop_requested'] and job['kind'] in ('start','resume','equip'):
+                    from .job_control import cancel_batch
+                    cancel_batch(self.runtime)
+                if job['kind'] in ('scan','start','resume','equip','reconcile'):
+                    self.stop_available=job['status']=='failed' and not job['stop_requested']
+            save(directory/'job.json',{k:v for k,v in job.items() if k!='logs'})
         # Disk cleanup must never hold the task-submission/stop lock.
         try:
             from .storage_management import finish_cleanup
@@ -347,6 +366,7 @@ class Backend:
 
     def stop(self,expected=None):
         with self.lock:
+            if self.stopping:return {'stopped':False,'stopping':True}
             if expected and (not self.job or expected.get('job_id')!=self.job['id'] or expected.get('kind')!=self.job['kind']):
                 raise ValueError('任务已变化，请刷新状态后再停止')
             if expected and (not self.process or self.process.poll() is not None):return {'stopped':False}
@@ -364,19 +384,37 @@ class Backend:
                 self.stop_available=False
                 return {'stopped':ended,'batch_cancelled':ended}
             self.job['stop_requested']=True
+            self.stopping=True;self.stop_error=None
             if self.job['kind'] in ('preview','elixir','dust'):self.process.terminate()
-            else:
-                (self.runtime/'stop.signal').touch()
-                from .job_control import terminate_job
-                threading.Thread(target=terminate_job,args=(self.process,self.runtime),daemon=True).start()
-            return {'stopped':True}
+            threading.Thread(target=self.finish_stop,args=(self.process,self.job,not math_running),daemon=True).start()
+            return {'stopped':False,'stopping':True}
+
+    def finish_stop(self,process,job,game):
+        error=None
+        try:
+            from .job_control import terminate_job
+            terminate_job(process,self.runtime)
+            if game:
+                from .good_backend import stop_owned_backend
+                stop_owned_backend(self.root)
+        except Exception as exc:error=str(exc)
+        finally:
+            with self.lock:
+                if self.job is job:
+                    self.stop_error=error;self.stopping=False
+                    if process.poll() is not None:
+                        job.update(status='stopped',finished=time.time())
+                        from .job_control import cancel_batch
+                        if game:cancel_batch(self.runtime)
+                    if __import__('re').fullmatch(r'[0-9a-f]{32}',job.get('id','')):
+                        save(self.directory/'jobs'/job['id']/'job.json',{k:v for k,v in job.items() if k!='logs'})
 
     def emergency_stop(self):
         # Write first: input/scanner loops can observe this even if another lock is held.
         (self.runtime/'stop.signal').touch()
         result=self.stop()
         save(self.runtime/'emergency-stop.json',{'at':time.time(),'source':'global_hotkey_or_button',
-                                                'active_job_stopped':result['stopped']})
+                                                'active_job_stopped':result.get('stopped',False),'stopping':result.get('stopping',False)})
         return {'stopped':True,'controller_stop_requested':True}
 
     def save_loadouts(self):
@@ -409,10 +447,15 @@ def make_handler(backend):
             path=urlparse(self.path).path
             if path=='/api/health':
                 import ctypes
+                from .package_info import build_info
                 self.send(200,{'app':'artifact-workbench','instance':hashlib.sha256(str(ROOT).encode()).hexdigest()[:16],
+                               **build_info(backend.root),
                                'frozen':bool(getattr(sys,'frozen',False)),
                                'administrator':bool(ctypes.windll.shell32.IsUserAnAdmin()) if sys.platform=='win32' else False});return
-            if path=='/api/bootstrap':self.send(200,{'token':backend.token,'instance':hashlib.sha256(str(backend.root.resolve()).encode()).hexdigest()[:16],'catalog':backend.catalog(),'draft':backend.store.latest_draft()});return
+            if path=='/api/bootstrap':
+                from .package_info import build_info
+                self.send(200,{'token':backend.token,'instance':backend.store.instance(),
+                              'build':build_info(backend.root),'catalog':backend.catalog(),'draft':backend.store.latest_draft()});return
             if path=='/api/draft/latest':self.send(200,backend.store.latest_draft());return
             if path=='/api/catalog':self.send(200,backend.catalog(refresh=True));return
             if path=='/api/state':self.send(200,backend.state());return

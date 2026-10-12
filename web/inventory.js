@@ -3,8 +3,8 @@ export function createInventoryUI({api,catalog,selected,choose,refresh,scan,noti
   const $=id=>document.getElementById(id);let preview=null,working=false,jobBusy=false;
   const run=fn=>async(...args)=>{try{await fn(...args);}catch(e){notify(e.message,true);$('inventory-message').textContent=e.message;}finally{working=false;buttons();}};
   function buttons(){
-    $('inventory-file').disabled=working;$('inventory-scan').disabled=working||jobBusy;$('inventory-scan-all').disabled=working||jobBusy;
-    $('inventory-import').disabled=working;$('inventory-confirm').disabled=working||!preview?.can_import;
+    $('inventory-file').disabled=working||jobBusy;$('inventory-scan').disabled=working||jobBusy;$('inventory-scan-all').disabled=working||jobBusy;
+    $('inventory-import').disabled=working||jobBusy;$('inventory-confirm').disabled=working||jobBusy||!preview?.can_import;
   }
   function render(){
     const entries=catalog().snapshots;
@@ -38,5 +38,5 @@ export function createInventoryUI({api,catalog,selected,choose,refresh,scan,noti
   });
   $('inventory-snapshot').onchange=e=>{choose(e.target.value);render();};
   $('inventory-scan').onclick=run(()=>scan('current'));$('inventory-scan-all').onclick=run(()=>scan('all'));
-  return {render,state:busy=>{jobBusy=busy;buttons();},previewFile:run(fileSelected)};
+  return {render,state:busy=>{if(busy&&!jobBusy)$('inventory-message').textContent='有任务正在运行。请先停止任务，确认已停止后再导入 JSON。';else if(!busy&&jobBusy)$('inventory-message').textContent='任务已结束，可以导入 JSON 或重新扫描。';jobBusy=busy;buttons();},previewFile:run(fileSelected)};
 }

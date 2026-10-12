@@ -92,7 +92,8 @@ def _main():
                     save(manifest,state)
                 if kind=='start' and data and data.get('auto_equip_after') and state.get('started',0)>=job_started:
                     save(Path(state['directory'])/'auto-equip-policy.json',{'enabled':True,'scene':data.get('equip_scene')})
-        save(output,{'status':'failed','error':str(exc)})
+        from .job_control import stop_requested
+        save(output,{'status':'stopped' if stop_requested(ROOT) else 'failed','error':str(exc)})
         raise
 
 

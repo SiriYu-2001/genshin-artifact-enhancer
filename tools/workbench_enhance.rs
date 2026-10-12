@@ -11,9 +11,11 @@ use super::{models::*, orchestrator::ArtifactManager, ui_actions};
 
 thread_local! {static STRICT_BAG:std::cell::Cell<bool>=const {std::cell::Cell::new(false)};}
 thread_local! {
-    // GOODScanner's bundled text model. Initialized only for failed labels,
-    // reused on this executor thread, never used to guess or repair numbers.
+    // GOODScanner's bundled text model, initialized only for failed reads and
+    // reused on this thread. Every numeric result is still parsed strictly;
+    // characters are never substituted to guess a number.
     static TEXT_RESCUE:std::cell::RefCell<Option<Box<dyn ImageToText<RgbImage>+Send>>>=const {std::cell::RefCell::new(None)};
+    static NUMBER_RESCUE:std::cell::RefCell<Option<Box<dyn ImageToText<RgbImage>+Send>>>=const {std::cell::RefCell::new(None)};
 }
 pub fn strict_bag_read()->bool {STRICT_BAG.with(|v|v.get())}
 fn exact_scan<T>(f:impl FnOnce()->T)->T {
@@ -101,6 +103,84 @@ fn numeric(frame:&RgbImage,r:(u32,u32,u32,u32),ocr:&dyn ImageToText<RgbImage>)->
     let doubled=image::imageops::resize(&im,im.width()*2,im.height()*2,image::imageops::FilterType::CatmullRom);
     Ok(vec![ocr.image_to_text(&im,false)?,ocr.image_to_text(&doubled,false)?])
 }
+fn rescue_number(frame:&RgbImage,r:(u32,u32,u32,u32))->Result<Vec<String>> {
+    NUMBER_RESCUE.with(|slot|{
+        let mut model=slot.borrow_mut();
+        if model.is_none(){*model=Some(crate::scanner::common::ocr_factory::create_ocr_model("ppocrv4")?);}
+        numeric(frame,r,model.as_ref().unwrap().as_ref())
+    })
+}
+fn text_run(frame:&RgbImage,r:(u32,u32,u32,u32),beige:bool)->Result<(u32,u32,u32,u32)> {
+    let im=crop(frame,r);
+    let columns:Vec<_>=(0..r.2).map(|x|(0..r.3).filter(|&y|{
+        let p=im.get_pixel(x,y);let lo=*p.0.iter().min().unwrap();let hi=*p.0.iter().max().unwrap();
+        if beige {lo>120 && p[0].saturating_sub(p[2])>20 && p[1].saturating_sub(p[2])>10}
+        else {lo>185 && hi-lo<45}
+    }).count()>=5).collect();
+    let start=columns.iter().position(|&v|v).context("No label glyphs")?;
+    ensure!(start<24,"Label start outside calibrated anchor");
+    let mut end=start;
+    for x in start+1..columns.len(){if columns[x]{if x-end>23{break;}end=x;}}
+    ensure!(end-start>=25,"Label run too short");
+    let left=start.saturating_sub(3) as u32;let right=(end as u32+5).min(r.2);
+    Ok((r.0+left,r.1,right-left,r.3))
+}
+fn number_run(frame:&RgbImage,y:u32,dim:bool)->Result<(u32,u32,u32,u32)> {
+    let im=crop(frame,(1760,y,125,43));let w=125usize;let h=43usize;
+    let mut ink:Vec<bool>=im.pixels().map(|p|{let lo=*p.0.iter().min().unwrap();let hi=*p.0.iter().max().unwrap();lo>if dim{105}else{170} && hi-lo<if dim{65}else{45}}).collect();
+    let mut bounds:Option<(usize,usize,usize,usize)>=None;
+    for start in 0..ink.len(){
+        if !ink[start]{continue;}ink[start]=false;let mut todo=vec![start];let mut area=0;
+        let (mut x0,mut x1,mut y0,mut y1)=(start%w,start%w,start/w,start/w);
+        while let Some(n)=todo.pop(){area+=1;let (x,y)=(n%w,n/w);x0=x0.min(x);x1=x1.max(x);y0=y0.min(y);y1=y1.max(y);
+            for dy in -1isize..=1{for dx in -1isize..=1{
+                let (nx,ny)=(x as isize+dx,y as isize+dy);
+                if nx>=0 && ny>=0 && nx<w as isize && ny<h as isize{let k=ny as usize*w+nx as usize;if ink[k]{ink[k]=false;todo.push(k);}}
+            }}
+        }
+        if area>=24 && y1-y0+1>=12 && x1-x0+1>=4{
+            bounds=Some(match bounds{None=>(x0,x1,y0,y1),Some((a,b,c,d))=>(a.min(x0),b.max(x1),c.min(y0),d.max(y1))});
+        }
+    }
+    let (a,b,c,d)=bounds.context("No full-height numeric glyphs")?;
+    // Result arrows shift the new value left; do not assume it ends at x1870.
+    ensure!(b>=60 && d-c+1<=30,"Numeric glyph bounds outside calibrated baseline");
+    let left=a.saturating_sub(3) as u32;let top=c.saturating_sub(3) as u32;
+    // Only crop the exterior. Keep every original interior pixel, including
+    // decimal points, commas and percent signs. Never repair recognized digits.
+    Ok((1760+left,y+top,((b+5).min(w) as u32)-left,((d+5).min(h) as u32)-top))
+}
+fn clean_number(frame:&RgbImage,y:u32,dim:bool)->Result<RgbImage> {
+    let r=number_run(frame,y,dim)?;let im=crop(frame,r);let w=im.width() as usize;let h=im.height() as usize;
+    let mut mask:Vec<bool>=im.pixels().map(|p|{let lo=*p.0.iter().min().unwrap();let hi=*p.0.iter().max().unwrap();lo>if dim{105}else{170} && hi-lo<if dim{65}else{45}}).collect();
+    let original=mask.clone();let mut components=Vec::new();
+    for start in 0..mask.len(){
+        if !mask[start]{continue;}mask[start]=false;let mut todo=vec![start];let mut pixels=Vec::new();
+        let (mut x0,mut x1,mut y0,mut y1)=(start%w,start%w,start/w,start/w);
+        while let Some(n)=todo.pop(){pixels.push(n);let(x,y)=(n%w,n/w);x0=x0.min(x);x1=x1.max(x);y0=y0.min(y);y1=y1.max(y);
+            for dy in -1isize..=1{for dx in -1isize..=1{let(nx,ny)=(x as isize+dx,y as isize+dy);
+                if nx>=0 && ny>=0 && nx<w as isize && ny<h as isize{let k=ny as usize*w+nx as usize;if mask[k]{mask[k]=false;todo.push(k);}}
+            }}
+        }
+        components.push((x0,x1,y0,y1,pixels));
+    }
+    let bodies:Vec<_>=components.iter().filter(|c|c.4.len()>=24 && c.3-c.2+1>=12 && c.1-c.0+1>=4).collect();
+    let baseline=bodies.iter().map(|c|c.3).max().context("No digit baseline")?;
+    let mut retained=original;
+    for (x0,x1,y0,y1,pixels) in &components {
+        // Tiny detached points above the baseline, strictly between complete
+        // glyph bodies, are particles. Decimal/comma marks sit at the baseline;
+        // percent circles overlap their slash body horizontally and are kept.
+        let between=bodies.iter().any(|c|c.1<*x0) && bodies.iter().any(|c|c.0>*x1);
+        let overlaps=bodies.iter().any(|c|*x0<=c.1 && *x1>=c.0);
+        if between && !overlaps && pixels.len()<=24 && x1-x0+1<=6 && y1-y0+1<=6 && y1+5<baseline {
+            for &n in pixels{retained[n]=false;}
+        }
+    }
+    let mut result=RgbImage::new(w as u32,h as u32);
+    for (n,on) in retained.into_iter().enumerate(){if on{result.put_pixel((n%w) as u32,(n/w) as u32,image::Rgb([255,255,255]));}}
+    Ok(result)
+}
 fn level_glyphs(frame:&RgbImage)->RgbImage {
     // Integer level only: preserve connected full-height +/digit glyphs and
     // remove tiny particle dots. Never use this on decimal substat numbers.
@@ -136,11 +216,35 @@ fn substat_number(frame:&RgbImage,y:u32,ocr:&dyn ImageToText<RgbImage>,dim:bool)
     let mut start=end;let mut gap=0;
     for x in (0..end).rev(){if ink[x]>=5{start=x;gap=0;}else{gap+=1;if gap>20{break;}}}
     ensure!(end-start>=5,"Numeric glyph run too short");
-    let x=start.saturating_sub(3) as u32;let width=((end+5).min(125) as u32)-x;
+    let x=start.saturating_sub(3) as u32;let width=(end+5).min(125) as u32-x;
     let mut readings=numeric(frame,(1760+x,y,width,43),ocr)?;
-    // Independent wider same-frame read prevents a tight crop from turning
-    // 6.2 into 2, even when both scales of the cropped image agree.
-    readings.extend(numeric(frame,(1785,y,100,43),ocr)?);
+    // An independently located glyph body checks the projection crop. The old
+    // fixed x1785 cross-check clipped leading digits when a result arrow moved
+    // the value left (13.2 -> 3.2). Do not use that partial crop as evidence.
+    if let Ok(rect)=number_run(frame,y,dim){readings.extend(numeric(frame,rect,ocr)?);}
+    else {readings.extend(numeric(frame,(1785,y,100,43),ocr)?);}
+    if !readings.iter().any(|s|value(s).is_some()) {
+        if let Ok(rect)=number_run(frame,y,dim){
+            readings.extend(numeric(frame,rect,ocr)?);
+            readings.extend(numeric(frame,(rect.0,y,rect.2,43),ocr)?);
+            if !readings.iter().any(|s|value(s).is_some()) && ocr.model_id()!=Some("ppocrv5") {
+                readings.push(rescue_text(frame,rect)?);
+                readings.push(rescue_text(frame,(rect.0,y,rect.2,43))?);
+            }
+        }
+        if !readings.iter().any(|s|value(s).is_some()) {
+            if let Ok(clean)=clean_number(frame,y,dim){
+                let doubled=image::imageops::resize(&clean,clean.width()*2,clean.height()*2,image::imageops::FilterType::CatmullRom);
+                readings.push(ocr.image_to_text(&clean,false)?);
+                readings.push(ocr.image_to_text(&doubled,false)?);
+            }
+        }
+        if !readings.iter().any(|s|value(s).is_some()) && ocr.model_id()!=Some("ppocrv4") {
+            // GOODScanner's existing numeric model is a last unreadable-only
+            // fallback. It never votes away conflicting valid observations.
+            if let Ok(rect)=number_run(frame,y,dim){readings.extend(rescue_number(frame,rect)?);}
+        }
+    }
     Ok(readings)
 }
 fn consensus<T:PartialEq+Clone>(values:Vec<T>,field:&str)->Result<T> {
@@ -155,6 +259,15 @@ fn parse_level(s:&str)->Option<i32> {
 fn count(s:&str)->Option<u32> {
     let re=regex::Regex::new(r"^\s*装备强化消耗\s*[（(]\s*(\d{1,2})\s*/\s*15\s*[）)]\s*$").unwrap();
     re.captures(s).and_then(|c|c[1].parse().ok()).filter(|n|*n<=15)
+}
+fn material_count(candidates:Vec<u32>,narrow:Vec<u32>,labels:&[String])->Result<u32> {
+    // Preserve established reads, including conflicts: fallback must never
+    // select whichever interpretation happens to match the visible tray.
+    if !candidates.is_empty(){return consensus(candidates,"material count fraction");}
+    let isolated=consensus(narrow,"isolated material count fraction")?;
+    let whole=consensus(labels.iter().filter_map(|s|count(s)).collect(),"full material count label")?;
+    ensure!(isolated==whole,"Conflicting isolated/full material count fraction");
+    Ok(isolated)
 }
 fn value(s:&str)->Option<(f64,bool)> {
     // Decoration may be discarded; digits, decimal points and units never repaired.
@@ -181,6 +294,12 @@ pub fn observe_frame(frame:&RgbImage,ocr:&dyn ImageToText<RgbImage>,expected:&Re
     if cn(&title)!=format!("{}{}",slot,cn(&expected.name)) && ocr.model_id()!=Some("ppocrv5") {
         title=rescue_text(frame,(138,24,620,45))?;
     }
+    if cn(&title)!=format!("{}{}",slot,cn(&expected.name)) {
+        if let Ok(rect)=text_run(frame,(138,31,620,33),true){
+            title=text(frame,rect,ocr)?;
+            if cn(&title)!=format!("{}{}",slot,cn(&expected.name)) && ocr.model_id()!=Some("ppocrv5"){title=rescue_text(frame,rect)?;}
+        }
+    }
     ensure!(cn(&title)==format!("{}{}",slot,cn(&expected.name)),"Enhancement title mismatch: {title:?}");
     // Geometric separation is essential: gold +N starts at x=1254.
     // Never OCR the current and preview values in one region.
@@ -197,18 +316,57 @@ pub fn observe_frame(frame:&RgbImage,ocr:&dyn ImageToText<RgbImage>,expected:&Re
     let expected_main=match expected.artifact.main_stat_key.as_str(){"hp"|"hp_"=>"生命值","atk"|"atk_"=>"攻击力","def_"=>"防御力","eleMas"=>"元素精通","enerRech_"=>"元素充能效率","critRate_"=>"暴击率","critDMG_"=>"暴击伤害","heal_"=>"治疗加成","pyro_dmg_"=>"火元素伤害加成","hydro_dmg_"=>"水元素伤害加成","anemo_dmg_"=>"风元素伤害加成","electro_dmg_"=>"雷元素伤害加成","dendro_dmg_"=>"草元素伤害加成","cryo_dmg_"=>"冰元素伤害加成","geo_dmg_"=>"岩元素伤害加成","physical_dmg_"=>"物理伤害加成",_=>bail!("Unknown main stat")};
     if main_label!=expected_main{main_label=cn(&gray_text(frame,(1200,237,245,39),ocr)?);}
     if main_label!=expected_main && ocr.model_id()!=Some("ppocrv5") {main_label=cn(&rescue_text(frame,(1200,237,245,39))?);}
+    if main_label!=expected_main {
+        if let Ok(rect)=text_run(frame,(1200,240,245,35),false){
+            main_label=cn(&text(frame,rect,ocr)?);
+            if main_label!=expected_main && ocr.model_id()!=Some("ppocrv5"){main_label=cn(&rescue_text(frame,rect)?);}
+        }
+    }
     ensure!(main_label==expected_main,"Main stat label mismatch");
     let (material_count,stage_add,low_rarity_filter)=if level==20 {(0,false,false)} else {
         ensure!(cn(&text(frame,(1690,994,132,45),ocr)?)=="强化","Not enhancement page");
-        let counts=[(1410,688,270,51),(1390,692,319,44)].into_iter().map(|r|text(frame,r,ocr)).collect::<Result<Vec<_>>>()?;
+        let mut counts=[(1410,688,270,51),(1390,692,319,44)].into_iter().map(|r|text(frame,r,ocr)).collect::<Result<Vec<_>>>()?;
         ensure!(counts.iter().any(|s|cn(s)=="装备强化消耗"),"Material count label unreadable");
         // Read the fraction separately: full-line OCR can collapse 11/15 to 1/15.
         let fraction=regex::Regex::new(r"^\s*(?:耗)?\s*[（(]?\s*(\d{1,2})\s*/\s*15\s*[）)]?\s*$")?;
         let mut candidates=Vec::new();
+        let mut fraction_readings=Vec::new();
         for rect in [(1547,697,90,36),(1553,696,92,38)] {
-            for raw in numeric(frame,rect,ocr)? {if let Some(c)=fraction.captures(&raw){if let Ok(n)=c[1].parse::<u32>(){if n<=15{candidates.push(n);}}}}
+            for raw in numeric(frame,rect,ocr)? {
+                if let Some(c)=fraction.captures(&raw){if let Ok(n)=c[1].parse::<u32>(){if n<=15{candidates.push(n);}}}
+                fraction_readings.push(raw);
+            }
         }
-        let n=consensus(candidates,"material count fraction")?;
+        let mut narrow=Vec::new();
+        let mut narrow_readings=Vec::new();
+        if candidates.is_empty() {
+            // A one-digit count shifts the centered label: the wide crops can
+            // include a clipped 耗, read as 毛/E. Do not strip arbitrary OCR
+            // characters. Isolate the fraction and cross-check the complete
+            // label on this same frame so a clipped leading 1 cannot pass.
+            for rect in [(1558,697,78,36),(1558,700,78,32)] {
+                for raw in numeric(frame,rect,ocr)? {
+                    if let Some(c)=fraction.captures(&raw){if let Ok(n)=c[1].parse::<u32>(){if n<=15{narrow.push(n);}}}
+                    narrow_readings.push(raw);
+                }
+            }
+            if (narrow.is_empty() || !counts.iter().any(|s|count(s).is_some())) && ocr.model_id()!=Some("ppocrv5") {
+                // Read another bundled model, never replace Q/O with zero.
+                // Keep every valid reading so conflicting evidence still stops.
+                for rect in [(1558,697,78,36),(1558,700,78,32)] {
+                    let raw=rescue_text(frame,rect)?;
+                    if let Some(c)=fraction.captures(&raw){if let Ok(n)=c[1].parse::<u32>(){if n<=15{narrow.push(n);}}}
+                    narrow_readings.push(raw);
+                }
+                // Keep the full label horizontally but remove empty vertical
+                // margins; otherwise the slash can collapse into a digit.
+                for rect in [(1410,700,270,31),(1390,700,319,31)] {counts.push(rescue_text(frame,rect)?);}
+                if !counts.iter().any(|s|count(s).is_some()) {
+                    if let Ok(rect)=text_run(frame,(1410,700,270,31),true){counts.push(rescue_text(frame,rect)?);}
+                }
+            }
+        }
+        let n=material_count(candidates,narrow,&counts).with_context(||format!("Material count OCR: wide={fraction_readings:?}; isolated={narrow_readings:?}; labels={counts:?}"))?;
         let filter=text(frame,(1176,745,365,48),ocr)?.replace(' ',"");
         (n,cn(&text(frame,(1660,745,210,48),ocr)?)=="阶段放入",filter=="4星及以下素材")
     };
@@ -227,6 +385,18 @@ pub fn observe_frame(frame:&RgbImage,ocr:&dyn ImageToText<RgbImage>,expected:&Re
             let y=base+i*53;
             let mut label=text(frame,(1198,y,326,43),ocr)?;
             if stat_key(&label,false).is_none() && stat_key(&label,true).is_none(){label=gray_text(frame,(1198,y,326,43),ocr)?;}
+            if stat_key(&label,false).is_none() && stat_key(&label,true).is_none() {
+                let chars=cn(&label).chars().count();
+                // Do not spend a fallback on the upgrade banner or an empty
+                // fifth row. Genuine short labels use a visible-run crop.
+                if (2..=8).contains(&chars) || label.contains("激活") {
+                    let rect=text_run(frame,(1200,y,320,43),false).unwrap_or((1200,y,320,43));
+                    label=text(frame,rect,ocr)?;
+                    if stat_key(&label,false).is_none() && stat_key(&label,true).is_none() && ocr.model_id()!=Some("ppocrv5") {
+                        label=rescue_text(frame,rect)?;
+                    }
+                }
+            }
             // A wrong vertical layout has no valid label. Do not run four
             // numeric inferences on every blank/banner row of that layout.
             if stat_key(&label,false).is_none() && stat_key(&label,true).is_none() {stats.clear();break;}
@@ -359,14 +529,25 @@ pub fn visible_materials(frame:&RgbImage,n:u32)->Result<Vec<u32>> {
     let mut stars=Vec::new();
     for i in 0..n.min(6) {
         let left=(1177.0+i as f64*111.3).round() as u32;let im=crop(frame,(left,898,99,21));
+        let gold=|p:&image::Rgb<u8>|p[0]>170 && p[1]>130 && p[0].saturating_sub(p[2])>90 && p[1].saturating_sub(p[2])>55 && p[0]>=p[1];
+        let rows:Vec<usize>=(0..im.height()).map(|y|(0..im.width()).filter(|&x|gold(im.get_pixel(x,y))).count()).collect();
+        let (peak,&peak_pixels)=rows.iter().enumerate().max_by_key(|(_,n)|*n).unwrap();
+        let mut top=peak;while top>0 && rows[top-1]>0{top-=1;}
+        let prefix:usize=rows[..top].iter().sum();
+        let prefix_height=rows[..top].iter().position(|&v|v>0).zip(rows[..top].iter().rposition(|&v|v>0)).map(|(a,b)|b-a+1).unwrap_or(0);
+        // A cup's gold ornament may extend into the crop above the stars.
+        // Remove only a tiny band separated by an entirely empty row. Nothing
+        // beside, inside or below the star row may be discarded as decoration.
+        let cut=if peak_pixels>=30 && prefix>0 && prefix<=24 && prefix_height<=3 {top as u32}else{0};
         let mut xs=Vec::new();let mut ys=Vec::new();let mut pixels=0;
         for (x,y,p) in im.enumerate_pixels(){
             // Gold star pixels, not the brown five-star card background.
-            if p[0]>170 && p[1]>130 && p[0].saturating_sub(p[2])>90 && p[1].saturating_sub(p[2])>55 && p[0]>=p[1] {xs.push(x);ys.push(y);pixels+=1;}
+            if y>=cut && gold(p) {xs.push(x);ys.push(y);pixels+=1;}
         }
         ensure!(!xs.is_empty(),"Unknown material rarity");
         let width=xs.iter().max().unwrap()-xs.iter().min().unwrap()+1;let height=ys.iter().max().unwrap()-ys.iter().min().unwrap()+1;
         let count=(width as f64/15.5).round() as u32;
+        if cut>0 {ensure!((xs.iter().min().unwrap()+xs.iter().max().unwrap()).abs_diff(99)<=6,"Uncentered material stars; no confirmation");}
         ensure!((1..=4).contains(&count) && (width as f64-count as f64*15.5).abs()<=3.0 && (12..=18).contains(&height) && (pixels as i32-count as i32*126).abs()<=count as i32*35,"Five-star or unrecognized material; no confirmation");
         stars.push(count);
     }
@@ -413,7 +594,7 @@ fn wait_staged(ctrl:&GenshinGameController,ocr:&dyn ImageToText<RgbImage>,r:&Req
                     Err(e)=>{last=e.to_string();break;},
                 }
             },
-            Err(e)=>last=format!("Stage observation unreadable: {e}"),
+            Err(e)=>last=format!("Stage observation unreadable: {e:#}"),
         }
         yas::utils::sleep(120);
     }
@@ -496,6 +677,74 @@ fn execute_inner(ctrl:&mut GenshinGameController,manager:&ArtifactManager,r:&Req
 #[cfg(test)]
 mod stage_tests {
     use super::*;
+    fn material_fixture(stars:usize,ornament:bool)->RgbImage {
+        let mut frame=RgbImage::new(1920,1080);let color=image::Rgb([255,210,40]);
+        let widths=[1u32,3,3,5,5,15,15,13,11,9,9,9,9,11,7];
+        for i in 0..stars {
+            let center=(49.5+(i as f64-(stars as f64-1.0)/2.0)*15.5).round() as u32;
+            for (y,&w) in widths.iter().enumerate(){for x in center-w/2..=center+w/2{frame.put_pixel(1177+x,902+y as u32,color);}}
+        }
+        if ornament{for(y,w)in [8u32,7,5].into_iter().enumerate(){for x in 65..65+w{frame.put_pixel(1177+x,898+y as u32,color);}}}
+        frame
+    }
+    #[test] fn separate_icon_ornament_does_not_turn_four_stars_into_unknown(){
+        assert_eq!(visible_materials(&material_fixture(4,false),1).unwrap(),vec![4]);
+        assert_eq!(visible_materials(&material_fixture(4,true),1).unwrap(),vec![4]);
+    }
+    #[test] fn five_stars_and_partial_extra_star_remain_blocked(){
+        for decoration in [false,true]{assert!(visible_materials(&material_fixture(5,decoration),1).is_err());}
+        let mut frame=material_fixture(4,true);
+        for x in 5..9{for y in 906..913{frame.put_pixel(1177+x,y,image::Rgb([255,210,40]));}}
+        assert!(visible_materials(&frame,1).is_err());
+    }
+    #[test] fn numeric_bounds_keep_internal_decimal_pixels_and_exclude_exterior_particles(){
+        let mut frame=RgbImage::new(1920,1080);let white=image::Rgb([255,255,255]);
+        for x in [1808,1846,1860]{for dx in 0..7{for y in 372..391{frame.put_pixel(x+dx,y,white);}}}
+        for x in 1830..1834{for y in 387..391{frame.put_pixel(x,y,white);}}
+        for x in 1796..1800{for y in 387..391{frame.put_pixel(x,y,white);}}
+        let r=number_run(&frame,360,false).unwrap();
+        assert!(r.0>1800 && r.0<=1808 && r.0+r.2>=1867);
+        let im=crop(&frame,r);assert_eq!(*im.get_pixel(1831-r.0,389-r.1),white);
+    }
+    #[test] fn text_bounds_use_visible_run_not_requested_name(){
+        let mut frame=RgbImage::new(1920,1080);let beige=image::Rgb([211,188,142]);
+        for x in [144,167,190]{for dx in 0..12{for y in 37..58{frame.put_pixel(x+dx,y,beige);}}}
+        for x in 600..612{for y in 37..58{frame.put_pixel(x,y,beige);}}
+        let r=text_run(&frame,(138,31,620,33),true).unwrap();
+        assert!(r.0<=144 && r.0+r.2>201 && r.0+r.2<600);
+        assert!(text_run(&RgbImage::new(1920,1080),(138,31,620,33),true).is_err());
+    }
+    #[test] fn inactive_beige_digits_are_not_clipped_by_white_text_threshold(){
+        let mut frame=RgbImage::new(1920,1080);let dim=image::Rgb([193,170,147]);
+        for x in [1810,1835,1855]{for dx in 0..10{for y in 477..496{frame.put_pixel(x+dx,y,dim);}}}
+        let r=number_run(&frame,466,true).unwrap();
+        assert!(r.0<=1810 && r.0+r.2>=1865);
+    }
+    #[test] fn numeric_cleanup_keeps_baseline_decimal_and_only_removes_detached_upper_point(){
+        let mut frame=RgbImage::new(1920,1080);let white=image::Rgb([255,255,255]);
+        for x in [1810,1840,1860]{for dx in 0..7{for y in 372..391{frame.put_pixel(x+dx,y,white);}}}
+        for x in 1829..1833{for y in 387..391{frame.put_pixel(x,y,white);}for y in 374..378{frame.put_pixel(x,y,white);}}
+        let r=number_run(&frame,360,false).unwrap();let clean=clean_number(&frame,360,false).unwrap();
+        assert_eq!(*clean.get_pixel(1830-r.0,389-r.1),white);
+        assert_eq!(*clean.get_pixel(1830-r.0,375-r.1),image::Rgb([0,0,0]));
+        assert!(value("6:2%").is_none());assert_eq!(value("6.2%"),Some((6.2,true)));
+    }
+    #[test] fn material_fraction_fallback_requires_complete_label_agreement(){
+        let labels=vec!["装备强化消耗(2/15)".into()];
+        assert_eq!(material_count(vec![],vec![2,2],&labels).unwrap(),2);
+        assert!(material_count(vec![],vec![1,1],&vec!["装备强化消耗(11/15)".into()]).is_err());
+        assert!(material_count(vec![],vec![2],&vec!["毛(2/15)".into()]).is_err());
+        assert!(material_count(vec![],vec![2,3],&labels).is_err());
+        assert!(material_count(vec![],vec![],&labels).is_err());
+        assert!(count("装备强化消耗(16/15)").is_none());
+    }
+    #[test] fn material_fraction_fallback_never_overrides_wide_conflict(){
+        let labels=vec!["装备强化消耗(1/15)".into()];
+        assert!(material_count(vec![1,11],vec![1],&labels).is_err());
+        // Preserve known-good isolated double-digit readings, even if the
+        // full-line model collapses 11 to 1. It is only a fallback cross-check.
+        assert_eq!(material_count(vec![11,11],vec![],&labels).unwrap(),11);
+    }
     fn empty()->Observation {Observation{level:12,exp:Some(350),next_exp:Some(13025),material_count:0,title:"生之花测试".into(),main_label:"生命值".into(),stats:BTreeMap::from([("atk".into(),31.0)]),stage_add:true,low_rarity_filter:true}}
     #[test] fn empty_tray_is_pending_not_changed_target(){let o=empty();assert!(!staged_ready(&o,&o).unwrap());}
     #[test] fn ready_requires_materials_and_same_identity(){let o=empty();let mut a=o.clone();a.material_count=11;assert!(staged_ready(&o,&a).unwrap());a.level=16;assert!(staged_ready(&o,&a).is_err());}

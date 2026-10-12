@@ -21,6 +21,61 @@ fn main() -> anyhow::Result<()> {
     log::set_max_level(log::LevelFilter::Debug);
     let mut args=std::env::args().skip(1);
     let first=args.next().ok_or_else(||anyhow::anyhow!("port or --replay-selection required"))?;
+    if first=="--replay-corpus" {
+        use std::io::{BufRead,Write};
+        let input=std::io::BufReader::new(std::fs::File::open(args.next().ok_or_else(||anyhow::anyhow!("JSONL corpus required"))?)?);
+        let model=genshin_scanner::scanner::common::ocr_factory::create_ocr_model(&args.next().unwrap_or("ppocrv6tiny".into()))?;
+        let mut output=std::io::BufWriter::new(std::io::stdout().lock());
+        for (index,line) in input.lines().enumerate(){
+            let started=std::time::Instant::now();
+            let result=(||->anyhow::Result<serde_json::Value>{
+                let job:serde_json::Value=serde_json::from_str(&line?)?;
+                let frame=image::open(job["frame"].as_str().ok_or_else(||anyhow::anyhow!("frame required"))?)?.to_rgb8();
+                if job["kind"]=="materials"{
+                    let n=job["count"].as_u64().filter(|&n|n<=15).ok_or_else(||anyhow::anyhow!("Material count outside 0..15"))? as u32;
+                    return Ok(serde_json::json!({"visibleMaterialRarities":genshin_scanner::manager::workbench_enhance::visible_materials(&frame,n)?}));
+                }
+                if job["kind"]=="filter"{
+                    let (heading,reset,apply)=genshin_scanner::manager::ui_actions::workbench_artifact_filter_labels(&frame,model.as_ref())?;
+                    return Ok(serde_json::json!({"verified":heading=="圣遗物筛选" && reset=="重置" && apply=="确认","fields":{"heading":heading,"reset":reset,"apply":apply}}));
+                }
+                if let Some(request)=job.get("request"){
+                    let r=serde_json::from_value(request.clone())?;
+                    let observed=genshin_scanner::manager::workbench_enhance::observe_frame(&frame,model.as_ref(),&r)?;
+                    let stars=genshin_scanner::manager::workbench_enhance::visible_materials(&frame,observed.material_count)?;
+                    return Ok(serde_json::json!({"observation":observed,"visibleMaterialRarities":stars}));
+                }
+                let regions=job["regions"].as_array().ok_or_else(||anyhow::anyhow!("regions required"))?;
+                let mut fields=serde_json::Map::new();
+                for region in regions{
+                    let [x,y,w,h]:[u32;4]=serde_json::from_value(region["rect"].clone())?;
+                    anyhow::ensure!(w>0 && h>0 && x.checked_add(w).is_some_and(|v|v<=frame.width()) && y.checked_add(h).is_some_and(|v|v<=frame.height()),"Region outside frame");
+                    let crop=image::imageops::crop_imm(&frame,x,y,w,h).to_image();
+                    fields.insert(region["name"].as_str().ok_or_else(||anyhow::anyhow!("region name required"))?.into(),serde_json::json!(model.image_to_text(&crop,false)?));
+                }
+                Ok(serde_json::json!({"fields":fields}))
+            })();
+            let row=match result{Ok(v)=>serde_json::json!({"index":index,"result":v,"elapsedMs":started.elapsed().as_millis()}),Err(e)=>serde_json::json!({"index":index,"error":format!("{e:#}"),"elapsedMs":started.elapsed().as_millis()})};
+            writeln!(output,"{row}")?;output.flush()?;
+        }
+        return Ok(());
+    }
+    if first=="--replay-regions" {
+        // Offline diagnostics use the bundled production model and preprocessing.
+        // No controller is created and no game input is sent.
+        let frame=image::open(args.next().ok_or_else(||anyhow::anyhow!("frame required"))?)?.to_rgb8();
+        let regions:Vec<[u32;4]>=serde_json::from_slice(&std::fs::read(args.next().ok_or_else(||anyhow::anyhow!("regions required"))?)?)?;
+        let model=genshin_scanner::scanner::common::ocr_factory::create_ocr_model(&args.next().unwrap_or("ppocrv6tiny".into()))?;
+        let mut results=Vec::new();
+        for [x,y,w,h] in regions {
+            anyhow::ensure!(w>0 && h>0 && x.checked_add(w).is_some_and(|v|v<=frame.width()) && y.checked_add(h).is_some_and(|v|v<=frame.height()),"Region outside frame");
+            let crop=image::imageops::crop_imm(&frame,x,y,w,h).to_image();
+            let doubled=image::imageops::resize(&crop,w*2,h*2,image::imageops::FilterType::CatmullRom);
+            results.push(serde_json::json!({"rect":[x,y,w,h],"raw":model.image_to_text(&crop,false)?,"doubled":model.image_to_text(&doubled,false)?}));
+        }
+        println!("{}",serde_json::to_string(&results)?);
+        return Ok(());
+    }
     if first=="--replay-enhancement" {
         let frame=image::open(args.next().ok_or_else(||anyhow::anyhow!("frame required"))?)?.to_rgb8();
         let request:genshin_scanner::manager::workbench_enhance::Request=serde_json::from_slice(&std::fs::read(args.next().ok_or_else(||anyhow::anyhow!("request required"))?)?)?;

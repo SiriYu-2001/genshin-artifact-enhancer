@@ -12,6 +12,20 @@ replay=importlib.util.module_from_spec(spec);spec.loader.exec_module(replay)
 
 
 class EnhancementReplayTests(unittest.TestCase):
+    def test_readable_unsafe_settings_must_match_the_annotated_reasons(self):
+        for failures,should_pass in ((['low_rarity_filter_unverified'],True),([],False)):
+            with TemporaryDirectory() as tmp:
+                root=Path(tmp);cases=root/'cases.json';out=root/'out'
+                cases.write_text(json.dumps([{'frame':'synthetic.png','required':True,'level':0,'count':0,
+                    'artifact':{'name':'synthetic','setKey':'synthetic','slotKey':'plume','mainStatKey':'atk','level':0,'lock':True,'substats':[]},
+                    'expected_observation':{'stageAdd':True,'lowRarityFilter':False,'stagePreconditionFailures':['low_rarity_filter_unverified']}}]),encoding='utf-8')
+                result={'level':0,'materialCount':0,'stats':{},'stageAdd':True,'lowRarityFilter':False,'stagePreconditionFailures':failures}
+                argv=['replay','--exe','backend.exe','--ort','ort.dll','--cases',str(cases),'--output',str(out)]
+                with patch('sys.argv',argv),patch.object(replay.subprocess,'run',return_value=SimpleNamespace(returncode=0,stdout=json.dumps(result))),patch('builtins.print'):
+                    if should_pass:replay.main()
+                    else:
+                        with self.assertRaises(SystemExit):replay.main()
+
     def run_rejected(self,required,expected_rejection=None):
         with TemporaryDirectory() as tmp:
             root=Path(tmp);cases=root/'cases.json';out=root/'out'

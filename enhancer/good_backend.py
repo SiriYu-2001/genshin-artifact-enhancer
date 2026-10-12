@@ -26,6 +26,15 @@ class InputNotSent(RuntimeError):
 
 
 def explain_failure(details):
+    if 'Stage preconditions not met' in details or 'Stage preconditions changed' in details:
+        requirements=(('level_not_upgradable','当前目标已满20级，请更新库存后重新计算'),
+                      ('material_tray_not_empty','素材栏不是空的，请先移除已放入的材料'),
+                      ('stage_add_unverified','未确认“阶段放入”模式，请在游戏的放入设置中切换，并确认按钮显示“阶段放入”'),
+                      ('low_rarity_filter_unverified','未确认“4星及以下素材”筛选，请把素材下拉框设为“4星及以下素材”'))
+        fixes=[message for code,message in requirements if code in details]
+        if not fixes:
+            return '强化前置检查未通过，未点击阶段放入或强化。请检查目标未满20级、素材栏为空、按钮显示“阶段放入”、下拉框为“4星及以下素材”，并在放入设置中关闭五星素材。若画面已符合要求，请提供失败目录的 frame.png、error.json、request.json。'
+        return '强化前置检查未通过，未点击阶段放入或强化。'+'；'.join(fixes)+'。若画面已符合要求，请提供失败目录的 frame.png、error.json、request.json。'
     if 'Stage observation unreadable' in details:
         fields=(('Material count OCR','材料栏数量（已放入项数/15）'),
                 ('material count fraction','材料栏数量（已放入项数/15）'),

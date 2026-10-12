@@ -31,7 +31,8 @@ def main():
         else:
             observed=json.loads(run.stdout);row['observed']=observed
             row['correct']=(observed['level']==c['level'] and observed['materialCount']==c['count']
-                and observed['stats']=={s['key']:float(s['value']) for s in a['substats']})
+                and observed['stats']=={s['key']:float(s['value']) for s in a['substats']}
+                and all(observed.get(k)==v for k,v in c.get('expected_observation',{}).items()))
         results.append(row)
     summary={'cases':len(results),'accepted_correct':sum(r.get('correct',False) for r in results),
              'accepted_wrong':sum(r.get('correct') is False for r in results),'rejected':sum(not r['accepted'] for r in results),

@@ -618,6 +618,19 @@ fn reconcile(ctrl:&GenshinGameController,ocr:&dyn ImageToText<RgbImage>,r:&Reque
     }
     bail!("Unresolved enhancement confirmation: {last}; never replay confirmation")
 }
+pub fn stage_precondition_failures(o:&Observation)->Vec<&'static str> {
+    let mut failed=Vec::new();
+    if o.level>=20 {failed.push("level_not_upgradable");}
+    if o.material_count!=0 {failed.push("material_tray_not_empty");}
+    if !o.stage_add {failed.push("stage_add_unverified");}
+    if !o.low_rarity_filter {failed.push("low_rarity_filter_unverified");}
+    failed
+}
+fn verify_stage_preconditions(o:&Observation)->Result<()> {
+    let failed=stage_precondition_failures(o);
+    ensure!(failed.is_empty(),"Stage preconditions not met: {}; observed={}",failed.join(","),serde_json::to_string(o)?);
+    Ok(())
+}
 fn execute_inner(ctrl:&mut GenshinGameController,manager:&ArtifactManager,r:&Request)->Result<Value> {
     validate(r)?;ctrl.focus_game_window();
     ensure!(game_window_state()["foreground"]==true,"Game window activation failed; no input sent");
@@ -651,10 +664,11 @@ fn execute_inner(ctrl:&mut GenshinGameController,manager:&ArtifactManager,r:&Req
     if r.action=="inspect" {return Ok(json!({"request":r,"observation":before,"confirmed":false}));}
     if r.action=="leave" {ensure!(before.material_count==0,"Unconfirmed materials remain");ctrl.click_at(1840.0,48.0);yas::utils::sleep(300);return Ok(json!({"request":r,"confirmed":false}));}
     ensure!(r.source_kind=="ordinary" && !a.elixir_crafted,"Crafted or unverified source: automatic consumption disabled");
-    ensure!(before.level<20 && before.material_count==0 && before.stage_add && before.low_rarity_filter,"Stage preconditions not met");
+    verify_stage_preconditions(&before)?;
     verify_settings(ctrl,&ocr)?;
     let empty=read_current(ctrl,&ocr,r)?;
-    ensure!(matches_observation(&empty,&r.artifact) && empty.material_count==0 && empty.stage_add && empty.low_rarity_filter,"Stage preconditions changed");
+    ensure!(matches_observation(&empty,&r.artifact),"Stage target identity changed before material selection");
+    verify_stage_preconditions(&empty)?;
     // Let the game consume the release at the clicked position before moving
     // the cursor. Poll the resulting state, never replay the stage-add click.
     ctrl.click_at(1767.0,768.0);yas::utils::sleep(80);ctrl.move_to(1100.0,650.0);
@@ -746,6 +760,17 @@ mod stage_tests {
         assert_eq!(material_count(vec![11,11],vec![],&labels).unwrap(),11);
     }
     fn empty()->Observation {Observation{level:12,exp:Some(350),next_exp:Some(13025),material_count:0,title:"生之花测试".into(),main_label:"生命值".into(),stats:BTreeMap::from([("atk".into(),31.0)]),stage_add:true,low_rarity_filter:true}}
+    #[test] fn stage_preconditions_report_every_failed_requirement_without_weakening_guard(){
+        for mask in 0..16 {
+            let mut o=empty();o.level=if mask&1!=0{20}else{12};o.material_count=if mask&2!=0{1}else{0};o.stage_add=mask&4==0;o.low_rarity_filter=mask&8==0;
+            let failures=stage_precondition_failures(&o);
+            assert_eq!(verify_stage_preconditions(&o).is_ok(),o.level<20 && o.material_count==0 && o.stage_add && o.low_rarity_filter);
+            for (bit,code) in [(1,"level_not_upgradable"),(2,"material_tray_not_empty"),(4,"stage_add_unverified"),(8,"low_rarity_filter_unverified")] {
+                assert_eq!(failures.contains(&code),mask&bit!=0);
+            }
+            if mask!=0 {let err=verify_stage_preconditions(&o).unwrap_err().to_string();assert!(err.contains("observed="));for code in failures {assert!(err.contains(code));}}
+        }
+    }
     #[test] fn empty_tray_is_pending_not_changed_target(){let o=empty();assert!(!staged_ready(&o,&o).unwrap());}
     #[test] fn ready_requires_materials_and_same_identity(){let o=empty();let mut a=o.clone();a.material_count=11;assert!(staged_ready(&o,&a).unwrap());a.level=16;assert!(staged_ready(&o,&a).is_err());}
     #[test] fn missing_optional_exp_is_not_an_observed_change(){let o=empty();let mut a=o.clone();a.material_count=1;a.exp=None;assert!(staged_ready(&o,&a).unwrap());a.exp=Some(351);assert!(staged_ready(&o,&a).is_err());}

@@ -13,6 +13,26 @@ from test_import_inventory import good_artifact
 WINDOW={'window':{'found':True,'width':1920,'height':1080}}
 
 class GoodBackendTests(unittest.TestCase):
+    def test_stage_preconditions_explain_each_failed_requirement(self):
+        for code,expected in (('level_not_upgradable','当前目标已满20级'),
+                              ('material_tray_not_empty','先移除已放入的材料'),
+                              ('stage_add_unverified','未确认“阶段放入”模式'),
+                              ('low_rarity_filter_unverified','未确认“4星及以下素材”筛选')):
+            message=good.explain_failure('Stage preconditions not met: '+code+'; observed={}')
+            self.assertIn(expected,message)
+            self.assertIn('未点击阶段放入或强化',message)
+        message=good.explain_failure('Stage preconditions not met: stage_add_unverified,low_rarity_filter_unverified')
+        self.assertIn('未确认“阶段放入”模式',message)
+        self.assertIn('未确认“4星及以下素材”筛选',message)
+        message=good.explain_failure('Stage preconditions not met: low_rarity_filter_unverified')
+        self.assertNotIn('未确认“阶段放入”模式',message)
+
+    def test_legacy_stage_preconditions_ask_for_checks_without_claiming_a_known_cause(self):
+        for error in ('Stage preconditions not met','Stage preconditions changed'):
+            message=good.explain_failure(error)
+            for expected in ('请检查','素材栏为空','4星及以下素材','关闭五星素材','frame.png'):
+                self.assertIn(expected,message)
+
     def test_stage_error_reports_failed_field_for_old_and_new_backend(self):
         for reason in ('Unreadable material count fraction',
                        'Material count OCR: wide=[]; isolated=[]; labels=[]: Unreadable isolated material count fraction'):

@@ -85,6 +85,7 @@ fn main() -> anyhow::Result<()> {
         let observed=genshin_scanner::manager::workbench_enhance::observe_frame(&frame,model.as_ref(),&request)?;
         let mut result=serde_json::to_value(&observed)?;
         result["observationMs"]=serde_json::json!(started.elapsed().as_millis());
+        result["stagePreconditionFailures"]=serde_json::json!(genshin_scanner::manager::workbench_enhance::stage_precondition_failures(&observed));
         result["visibleMaterialRarities"]=serde_json::to_value(genshin_scanner::manager::workbench_enhance::visible_materials(&frame,observed.material_count)?)?;
         println!("{}",result);
         return Ok(());

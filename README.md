@@ -24,6 +24,8 @@
 - 祝圣之霜／启圣之尘的即时建议和未来刷取对照；**只提供建议，不自动消耗霜／尘**。
 - SQLite 保存表单、草稿和配置；配置回收站、彻底删除、历史压缩、错误截图保留。
 
+强化前请在游戏中选择“4星及以下素材”，保持按钮显示“阶段放入”，并在放入设置中关闭五星素材。程序会检查并提示未满足的条件。
+
 **程序永不消耗五星圣遗物作为素材。** 锁定五星可以是强化目标；素材星级不明确则停止。任务运行时按左／右 Win 或页面显示的备用快捷键中断，也可点击“紧急中断”。已提交给游戏的消耗无法撤销。
 
 ## 评分与强化策略
@@ -68,7 +70,7 @@ python -m venv .venv
 .venv/Scripts/python.exe -m enhancer ui
 ```
 
-计算模块可直接运行。扫描与换装需要包内适配版 GOODScanner；逐阶段强化仍需要适配版 yas、ONNX Runtime 和霜华。详见 [Windows 构建与依赖](docs/Windows便携版.md)。
+计算模块可直接运行。扫描、换装和逐阶段强化均需要包内适配版 GOODScanner、OCR 模型与 ONNX Runtime；旧版 yas／霜华仅保留为兼容依赖。详见 [Windows 构建与依赖](docs/Windows便携版.md)。
 
 ```powershell
 python -m unittest discover -s tests -v

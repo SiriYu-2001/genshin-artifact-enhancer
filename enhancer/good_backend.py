@@ -74,11 +74,23 @@ def owned_process_running(state):
     kernel.OpenProcess.argtypes=[ctypes.c_ulong,ctypes.c_bool,ctypes.c_ulong];kernel.OpenProcess.restype=ctypes.c_void_p
     kernel.CloseHandle.argtypes=[ctypes.c_void_p]
     kernel.QueryFullProcessImageNameW.argtypes=[ctypes.c_void_p,ctypes.c_ulong,ctypes.c_wchar_p,ctypes.POINTER(ctypes.c_ulong)]
-    handle=kernel.OpenProcess(0x1000,False,state['pid'])
-    if not handle:return False
+    kernel.WaitForSingleObject.argtypes=[ctypes.c_void_p,ctypes.c_ulong];kernel.WaitForSingleObject.restype=ctypes.c_ulong
+    # QUERY_LIMITED_INFORMATION | SYNCHRONIZE. An exited process may remain
+    # queryable while someone holds a handle; its image path is not liveness.
+    handle=kernel.OpenProcess(0x1000|0x100000,False,state['pid'])
+    if not handle:
+        error=ctypes.get_last_error()
+        if error==87:return False  # PID no longer exists (ERROR_INVALID_PARAMETER).
+        raise RuntimeError(f'无法核验后台进程是否退出（Windows 错误 {error}），停止标记已保留；请关闭旧工坊并以管理员权限重开')
     try:
+        outcome=kernel.WaitForSingleObject(handle,0)
+        if outcome==0:return False  # WAIT_OBJECT_0: process has terminated.
+        if outcome!=0x102:raise RuntimeError(f'查询后台退出信号失败（Windows 错误 {ctypes.get_last_error()}），停止标记已保留')
         buffer=ctypes.create_unicode_buffer(4096);size=ctypes.c_ulong(len(buffer))
-        if not kernel.QueryFullProcessImageNameW(handle,0,buffer,ctypes.byref(size)):return True
+        if not kernel.QueryFullProcessImageNameW(handle,0,buffer,ctypes.byref(size)):
+            # Exit can race the image query; recheck the same process object.
+            if kernel.WaitForSingleObject(handle,0)==0:return False
+            raise RuntimeError(f'无法核验后台程序路径（Windows 错误 {ctypes.get_last_error()}），停止标记已保留')
         return os.path.normcase(buffer.value)==os.path.normcase(state['exe_path'])
     finally:kernel.CloseHandle(handle)
 

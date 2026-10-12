@@ -20,6 +20,43 @@ from test_ui import config
 
 
 class RecoveryTests(unittest.TestCase):
+    @unittest.skipUnless(os.name=='nt','Windows process object lifetime')
+    def test_exited_process_with_open_handle_does_not_block_restart(self):
+        # Keep Popen (and its Windows process handle) alive for the entire check.
+        # QueryFullProcessImageName can still succeed after wait() has returned.
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp);directory=root/'runtime/goodscanner/instances/exited';directory.mkdir(parents=True)
+            stop=root/'runtime/stop.signal';stop.touch()
+            p=subprocess.Popen([sys.executable,'-c','pass'],creationflags=subprocess.CREATE_NO_WINDOW)
+            try:
+                p.wait(timeout=5)
+                state={'state':'running','pid':p.pid,'exe_path':sys.executable,'directory':str(directory)}
+                (root/'runtime/goodscanner/server.json').write_text(json.dumps(state),encoding='utf-8')
+                self.assertIsNotNone(p._handle)
+                self.assertFalse(good.owned_process_running(state))
+                started=time.monotonic();good.prepare_game_job(root)
+                self.assertLess(time.monotonic()-started,1)
+                self.assertFalse(stop.exists())
+                self.assertEqual(json.loads((root/'runtime/goodscanner/server.json').read_text(encoding='utf-8'))['state'],'stopped')
+            finally:
+                if p.poll() is None:p.kill()
+                p.wait()
+
+    @unittest.skipUnless(os.name=='nt','Windows process liveness')
+    def test_live_process_is_not_mistaken_for_exited(self):
+        p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'],creationflags=subprocess.CREATE_NO_WINDOW)
+        try:
+            self.assertTrue(good.owned_process_running({'pid':p.pid,'exe_path':sys.executable}))
+            self.assertFalse(good.owned_process_running({'pid':p.pid,'exe_path':str(Path(sys.executable).with_name('other.exe'))}))
+        finally:p.kill();p.wait()
+
+    def test_access_denied_is_not_treated_as_a_stopped_process(self):
+        import ctypes
+        kernel=Mock();kernel.OpenProcess.return_value=0
+        with patch.object(good.os,'name','nt'),patch.object(good.ctypes,'WinDLL',return_value=kernel),patch.object(good.ctypes,'get_last_error',return_value=5):
+            with self.assertRaisesRegex(RuntimeError,'Windows 错误 5'):good.owned_process_running({'pid':123,'exe_path':'synthetic.exe'})
+        kernel.CloseHandle.assert_not_called()
+
     def test_scan_stall_stops_backend_without_publishing_partial_result(self):
         import itertools,uuid
         with TemporaryDirectory() as tmp:

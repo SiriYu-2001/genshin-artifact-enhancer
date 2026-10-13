@@ -510,19 +510,92 @@ fn open_target(ctrl:&mut GenshinGameController,manager:&ArtifactManager,r:&Reque
     ensure!(matches_observation(&current,&r.artifact) && current.material_count==0,"Enhancement entry differs from verified target");
     Ok((current,actual))
 }
-fn verify_settings(ctrl:&mut GenshinGameController,ocr:&dyn ImageToText<RgbImage>)->Result<()> {
+#[derive(Clone,Debug,Serialize,PartialEq)]
+#[serde(rename_all="camelCase")]
+pub struct MaterialSettings {pub stage_enabled:bool,pub five_star_enabled:bool}
+fn toggle_state(frame:&RgbImage,y:u32)->Option<bool> {
+    let sample=|x|{
+        let patch=crop(frame,(x,y,15,16));let mut channels=[Vec::new(),Vec::new(),Vec::new()];
+        for p in patch.pixels(){for c in 0..3{channels[c].push(p[c]);}}
+        let med:Vec<u8>=channels.iter_mut().map(|c|{c.sort_unstable();c[c.len()/2]}).collect();
+        let bright=patch.pixels().filter(|p|*p.0.iter().min().unwrap()>160).count();(med,bright)
+    };
+    let (left,lb)=sample(1190);let (right,rb)=sample(1238);
+    // Verify thumb position on both sides. An unlit/occluded/transitioning switch
+    // is unknown, not an OFF value that permits a speculative toggle.
+    if right.iter().all(|&c|c<140) && right[2]>right[0]+5 && rb<=3 && lb>=80 && left[0]>170 {return Some(false);}
+    if right.iter().all(|&c|c>160) && rb>=120 && lb<=10 && left[0]>170 && left[1]>145 && left[0].saturating_sub(left[2])>35 {return Some(true);}
+    None
+}
+pub fn observe_material_settings(frame:&RgbImage,ocr:&dyn ImageToText<RgbImage>)->Result<MaterialSettings> {
+    ensure!(frame.dimensions()==(1920,1080),"Material settings frame size unsupported");
+    let heading=text(frame,(870,276,190,55),ocr)?;
+    ensure!(cn(&heading)=="放入设置","Material settings dialog not recognized: {heading:?}");
+    let mut stage=text(frame,(601,366,526,48),ocr)?;
+    if cn(&stage)!="开启阶段放入功能" {stage=rescue_text(frame,(601,366,526,48))?;}
+    ensure!(cn(&stage)=="开启阶段放入功能","Stage setting label unverified: {stage:?}");
+    let five=text(frame,(601,436,526,48),ocr)?;
+    ensure!(five.split_whitespace().collect::<String>()=="可快捷放入5星圣遗物作为强化素材","Five-star setting label unverified: {five:?}");
+    Ok(MaterialSettings{stage_enabled:toggle_state(frame,382).context("Stage setting switch unreadable")?,
+        five_star_enabled:toggle_state(frame,449).context("Five-star setting switch unreadable")?})
+}
+trait MaterialSettingsUi {
+    fn read(&mut self,require_stage:bool)->Result<MaterialSettings>;
+    fn enable_stage(&mut self)->Result<()>;
+    fn close(&mut self)->Result<()>;
+}
+fn prepare_material_settings(ui:&mut impl MaterialSettingsUi)->Result<bool> {
+    let before=ui.read(false)?;
+    ensure!(!before.five_star_enabled,"Five-star quick-add is enabled or unknown; no consumption");
+    let changed=!before.stage_enabled;
+    if changed {
+        // This interface exposes no action on the five-star switch and no
+        // material selection. Toggle ON once, then only read fresh frames.
+        ui.enable_stage()?;
+        let after=ui.read(true)?;
+        ensure!(!after.five_star_enabled,"Five-star quick-add is enabled or unknown; no consumption");
+        ensure!(after.stage_enabled,"Stage setting enable unverified; toggle will not be repeated");
+    }
+    ui.close()?;Ok(changed)
+}
+fn verify_settings(ctrl:&mut GenshinGameController,ocr:&dyn ImageToText<RgbImage>,r:&Request)->Result<()> {
+    struct SettingsUi<'a>{ctrl:&'a mut GenshinGameController,ocr:&'a dyn ImageToText<RgbImage>,request:&'a Request}
+    impl MaterialSettingsUi for SettingsUi<'_> {
+        fn read(&mut self,require_stage:bool)->Result<MaterialSettings> {
+            let mut last=None;let mut observations=Vec::new();
+            for _ in 0..4 {
+                ensure!(!self.ctrl.is_cancelled(),"Cancelled before material settings verification");
+                let frame=self.ctrl.capture_game()?;
+                let result=observe_material_settings(&frame,self.ocr);
+                let (error,unsafe_five)=match result {
+                    Ok(s)=>{
+                        observations.push(json!({"observed":s}));
+                        if s.five_star_enabled {("Five-star quick-add is enabled or unknown; no consumption".to_string(),true)}
+                        else if require_stage && !s.stage_enabled {("Stage setting enable unverified; toggle will not be repeated".to_string(),false)}
+                        else {return Ok(s);}
+                    },
+                    Err(e)=>{let error=format!("{e:#}");observations.push(json!({"error":error}));(error,false)}
+                };
+                last=Some((frame,error));if unsafe_five {break;}yas::utils::sleep(100);
+            }
+            let (frame,error)=last.context("Material settings observation missing")?;
+            let dir=Path::new("failures").join(format!("enhance-{}",self.request.operation_id));std::fs::create_dir_all(&dir)?;
+            frame.save(dir.join("frame.png"))?;
+            save(&dir.join("settings-observations.json"),&json!({"observations":observations,"stageToggleSent":require_stage,"confirmationSent":false}))?;
+            bail!("{error}")
+        }
+        fn enable_stage(&mut self)->Result<()> {
+            ensure!(!self.ctrl.is_cancelled(),"Cancelled before enabling stage mode");
+            self.ctrl.click_at(1224.0,391.0);yas::utils::sleep(80);self.ctrl.move_to(1100.0,650.0);Ok(())
+        }
+        fn close(&mut self)->Result<()> {
+            ensure!(!self.ctrl.is_cancelled(),"Cancelled before closing material settings");
+            self.ctrl.click_at(1347.0,300.0);yas::utils::sleep(200);Ok(())
+        }
+    }
     ctrl.click_at(1608.0,768.0);yas::utils::sleep(250);
-    let mut frame=None;
-    for _ in 0..4 {let f=ctrl.capture_game()?;if cn(&text(&f,(870,276,190,55),ocr)?)=="放入设置" {frame=Some(f);break;}yas::utils::sleep(100);}
-    let f=frame.context("Material settings dialog not recognized")?;
-    let label=text(&f,(601,436,526,48),ocr)?;
-    ensure!(label.contains('5') && cn(&label).contains("星圣遗物"),"Five-star setting label unverified");
-    let sample=crop(&f,(1238,449,15,16));let mut channels=[Vec::new(),Vec::new(),Vec::new()];
-    for p in sample.pixels(){for c in 0..3{channels[c].push(p[c]);}}
-    let med:Vec<u8>=channels.iter_mut().map(|c|{c.sort_unstable();c[c.len()/2]}).collect();
-    let bright=sample.pixels().filter(|p|*p.0.iter().min().unwrap()>160).count();
-    ensure!(med.iter().all(|&c|c<140) && med[2]>med[0]+5 && bright<=3,"Five-star quick-add is enabled or unknown; no consumption");
-    ctrl.click_at(1347.0,300.0);yas::utils::sleep(200);
+    let changed=prepare_material_settings(&mut SettingsUi{ctrl,ocr,request:r})?;
+    if changed {log::info!("[enhance] enabled and verified stage mode; five-star materials remain disabled");}
     Ok(())
 }
 pub fn visible_materials(frame:&RgbImage,n:u32)->Result<Vec<u32>> {
@@ -631,6 +704,12 @@ fn verify_stage_preconditions(o:&Observation)->Result<()> {
     ensure!(failed.is_empty(),"Stage preconditions not met: {}; observed={}",failed.join(","),serde_json::to_string(o)?);
     Ok(())
 }
+fn verify_preparation_preconditions(o:&Observation)->Result<()> {
+    // Only the stage-mode setting may be prepared automatically. Target level,
+    // empty tray and low-rarity filter must already be verified on the target.
+    let failed:Vec<_>=stage_precondition_failures(o).into_iter().filter(|&v|v!="stage_add_unverified").collect();
+    ensure!(failed.is_empty(),"Stage preconditions not met: {}; observed={}",failed.join(","),serde_json::to_string(o)?);Ok(())
+}
 fn execute_inner(ctrl:&mut GenshinGameController,manager:&ArtifactManager,r:&Request)->Result<Value> {
     validate(r)?;ctrl.focus_game_window();
     ensure!(game_window_state()["foreground"]==true,"Game window activation failed; no input sent");
@@ -664,8 +743,8 @@ fn execute_inner(ctrl:&mut GenshinGameController,manager:&ArtifactManager,r:&Req
     if r.action=="inspect" {return Ok(json!({"request":r,"observation":before,"confirmed":false}));}
     if r.action=="leave" {ensure!(before.material_count==0,"Unconfirmed materials remain");ctrl.click_at(1840.0,48.0);yas::utils::sleep(300);return Ok(json!({"request":r,"confirmed":false}));}
     ensure!(r.source_kind=="ordinary" && !a.elixir_crafted,"Crafted or unverified source: automatic consumption disabled");
-    verify_stage_preconditions(&before)?;
-    verify_settings(ctrl,&ocr)?;
+    verify_preparation_preconditions(&before)?;
+    verify_settings(ctrl,&ocr,r)?;
     let empty=read_current(ctrl,&ocr,r)?;
     ensure!(matches_observation(&empty,&r.artifact),"Stage target identity changed before material selection");
     verify_stage_preconditions(&empty)?;
@@ -760,6 +839,45 @@ mod stage_tests {
         assert_eq!(material_count(vec![11,11],vec![],&labels).unwrap(),11);
     }
     fn empty()->Observation {Observation{level:12,exp:Some(350),next_exp:Some(13025),material_count:0,title:"生之花测试".into(),main_label:"生命值".into(),stats:BTreeMap::from([("atk".into(),31.0)]),stage_add:true,low_rarity_filter:true}}
+    struct SettingsFake {reads:std::collections::VecDeque<Result<MaterialSettings>>,actions:Vec<&'static str>}
+    impl MaterialSettingsUi for SettingsFake {
+        fn read(&mut self,require_stage:bool)->Result<MaterialSettings>{self.actions.push(if require_stage{"read-after"}else{"read-before"});self.reads.pop_front().expect("Unexpected read")}
+        fn enable_stage(&mut self)->Result<()>{self.actions.push("enable-stage");Ok(())}
+        fn close(&mut self)->Result<()>{self.actions.push("close");Ok(())}
+    }
+    fn settings(stage:bool,five:bool)->Result<MaterialSettings>{Ok(MaterialSettings{stage_enabled:stage,five_star_enabled:five})}
+    #[test] fn settings_preparation_is_idempotent_and_enables_stage_only_once(){
+        let mut ready=SettingsFake{reads:[settings(true,false)].into(),actions:vec![]};
+        assert!(!prepare_material_settings(&mut ready).unwrap());assert_eq!(ready.actions,vec!["read-before","close"]);
+        let mut disabled=SettingsFake{reads:[settings(false,false),settings(true,false)].into(),actions:vec![]};
+        assert!(prepare_material_settings(&mut disabled).unwrap());assert_eq!(disabled.actions,vec!["read-before","enable-stage","read-after","close"]);
+    }
+    #[test] fn unsafe_or_unknown_settings_never_trigger_a_toggle(){
+        for reading in [settings(false,true),settings(true,true),Err(anyhow::anyhow!("switch unreadable")),Err(anyhow::anyhow!("wrong page"))] {
+            let mut ui=SettingsFake{reads:[reading].into(),actions:vec![]};assert!(prepare_material_settings(&mut ui).is_err());assert_eq!(ui.actions,vec!["read-before"]);
+        }
+    }
+    #[test] fn failed_or_cancelled_stage_toggle_is_never_repeated(){
+        for reading in [settings(false,false),settings(true,true),Err(anyhow::anyhow!("Cancelled")),Err(anyhow::anyhow!("Unreadable after click"))] {
+            let mut ui=SettingsFake{reads:[settings(false,false),reading].into(),actions:vec![]};assert!(prepare_material_settings(&mut ui).is_err());assert_eq!(ui.actions,vec!["read-before","enable-stage","read-after"]);
+        }
+    }
+    #[test] fn automatic_preparation_does_not_allow_nonempty_tray_or_unsafe_filter(){
+        for mask in 0..16 {
+            let mut o=empty();o.level=if mask&1!=0{20}else{12};o.material_count=if mask&2!=0{1}else{0};o.stage_add=mask&4==0;o.low_rarity_filter=mask&8==0;
+            assert_eq!(verify_preparation_preconditions(&o).is_ok(),mask==0||mask==4);
+            assert_eq!(verify_stage_preconditions(&o).is_ok(),mask==0);
+        }
+    }
+    #[test] fn switch_geometry_requires_opposite_thumb_and_track_evidence(){
+        let mut frame=RgbImage::new(1920,1080);
+        let paint=|f:&mut RgbImage,x:u32,color:[u8;3]|{for y in 382..398{for xx in x..x+15{f.put_pixel(xx,y,image::Rgb(color));}}};
+        assert_eq!(toggle_state(&frame,382),None);
+        paint(&mut frame,1190,[245,238,210]);paint(&mut frame,1238,[53,61,79]);assert_eq!(toggle_state(&frame,382),Some(false));
+        paint(&mut frame,1190,[211,188,142]);paint(&mut frame,1238,[255,248,222]);assert_eq!(toggle_state(&frame,382),Some(true));
+        paint(&mut frame,1190,[245,238,210]);assert_eq!(toggle_state(&frame,382),None);
+        paint(&mut frame,1190,[53,61,79]);paint(&mut frame,1238,[53,61,79]);assert_eq!(toggle_state(&frame,382),None);
+    }
     #[test] fn stage_preconditions_report_every_failed_requirement_without_weakening_guard(){
         for mask in 0..16 {
             let mut o=empty();o.level=if mask&1!=0{20}else{12};o.material_count=if mask&2!=0{1}else{0};o.stage_add=mask&4==0;o.low_rarity_filter=mask&8==0;

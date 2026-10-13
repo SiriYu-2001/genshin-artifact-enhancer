@@ -13,6 +13,11 @@ from test_import_inventory import good_artifact
 WINDOW={'window':{'found':True,'width':1920,'height':1080}}
 
 class GoodBackendTests(unittest.TestCase):
+    def test_stage_settings_failure_distinguishes_toggle_confirmation_and_unsafe_materials(self):
+        self.assertIn('未重复切换开关',good.explain_failure('Stage setting enable unverified; toggle will not be repeated'))
+        self.assertIn('已停止',good.explain_failure('Five-star setting switch unreadable'))
+        self.assertIn('未继续操作',good.explain_failure('Stage setting switch unreadable'))
+        self.assertIn('放入设置弹窗',good.explain_failure('Material settings dialog not recognized'))
     def test_stage_preconditions_explain_each_failed_requirement(self):
         for code,expected in (('level_not_upgradable','当前目标已满20级'),
                               ('material_tray_not_empty','先移除已放入的材料'),

@@ -29,7 +29,7 @@ def explain_failure(details):
     if 'Stage preconditions not met' in details or 'Stage preconditions changed' in details:
         requirements=(('level_not_upgradable','当前目标已满20级，请更新库存后重新计算'),
                       ('material_tray_not_empty','素材栏不是空的，请先移除已放入的材料'),
-                      ('stage_add_unverified','未确认“阶段放入”模式，请在游戏的放入设置中切换，并确认按钮显示“阶段放入”'),
+                      ('stage_add_unverified','未确认“阶段放入”模式，请点击素材栏旁的齿轮，打开“开启阶段放入功能”，确认按钮显示“阶段放入”'),
                       ('low_rarity_filter_unverified','未确认“4星及以下素材”筛选，请把素材下拉框设为“4星及以下素材”'))
         fixes=[message for code,message in requirements if code in details]
         if not fixes:
@@ -49,6 +49,11 @@ def explain_failure(details):
         if field:
             return f'阶段放入后无法可靠识别{field}，未点击强化。失败诊断目录中的 frame.png、error.json 和 stage-observations.json 可用于排查。'
     for needle,message in (
+        ('Stage setting enable unverified','未能确认“开启阶段放入功能”已打开，未重复切换开关、未放入素材。请检查放入设置；settings-observations.json 记录了切换后的读数。'),
+        ('Stage setting switch unreadable','无法确认阶段放入开关的状态，未继续操作。请检查游戏的放入设置；失败画面及 settings-observations.json 已保存。'),
+        ('Stage setting label unverified','无法识别“开启阶段放入功能”设置项，未继续操作。请检查游戏放入设置页面。'),
+        ('Five-star setting switch unreadable','无法确认五星素材开关已关闭，已停止。请在放入设置中关闭“可快捷放入5星圣遗物作为强化素材”。'),
+        ('Material settings dialog not recognized','无法确认游戏的放入设置弹窗，已停止后续点击。请检查失败画面，不要手动点击强化。'),
         ('Artifact filter controls not verified','圣遗物筛选面板未识别完整，已停止后续点击。请确认游戏在“背包 → 圣遗物”页面；失败目录中的 frame.png 和 observations.json 可用于排查。'),
         ('Stage add produced no materials','阶段放入后材料栏仍为空，未点击强化。请检查是否有可用的四星及以下素材或经验材料；若材料充足，请查看保存的阶段诊断。'),
         ('Stage target identity changed','阶段放入前后的目标属性不一致，未点击强化；已保存两次读数供核验。'),

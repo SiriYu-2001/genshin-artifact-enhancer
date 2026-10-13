@@ -35,6 +35,9 @@ fn main() -> anyhow::Result<()> {
                     let n=job["count"].as_u64().filter(|&n|n<=15).ok_or_else(||anyhow::anyhow!("Material count outside 0..15"))? as u32;
                     return Ok(serde_json::json!({"visibleMaterialRarities":genshin_scanner::manager::workbench_enhance::visible_materials(&frame,n)?}));
                 }
+                if job["kind"]=="material-settings"{
+                    return Ok(serde_json::to_value(genshin_scanner::manager::workbench_enhance::observe_material_settings(&frame,model.as_ref())?)?);
+                }
                 if job["kind"]=="filter"{
                     let (heading,reset,apply)=genshin_scanner::manager::ui_actions::workbench_artifact_filter_labels(&frame,model.as_ref())?;
                     return Ok(serde_json::json!({"verified":heading=="圣遗物筛选" && reset=="重置" && apply=="确认","fields":{"heading":heading,"reset":reset,"apply":apply}}));

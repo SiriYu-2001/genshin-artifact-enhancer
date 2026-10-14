@@ -39,7 +39,7 @@ def main():
         command+=['--exclude-module',excluded]
     for folder in ('web','layouts','data','profiles','campaigns'):
         command+=['--add-data',str(ROOT/folder)+':'+folder]
-    for name in ('Start-Controller.ps1','Start-ControllerBootstrap.ps1','patch_yas.py','yas_readonly.rs','Build-Yas.ps1','patch_goodscanner.py','workbench_goodscanner.rs','patch_good_enhancement.py','workbench_enhance.rs','patch_workbench_feedback.py','patch_workbench_equip.py','patch_workbench_focus.py'):
+    for name in ('Start-Controller.ps1','Start-ControllerBootstrap.ps1','patch_yas.py','yas_readonly.rs','Build-Yas.ps1','patch_goodscanner.py','workbench_goodscanner.rs','patch_good_enhancement.py','workbench_enhance.rs','patch_workbench_feedback.py','patch_workbench_equip.py','patch_workbench_focus.py','patch_workbench_filtered_scan.py'):
         command+=['--add-data',str(ROOT/'tools'/name)+':tools']
     for name in ('yas_artifact.exe','yas_readonly.exe'):
         command+=['--add-binary',str(args.yas_bin_dir/name)+':vendor/yas/target/release']

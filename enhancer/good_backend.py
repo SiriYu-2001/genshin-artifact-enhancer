@@ -168,6 +168,16 @@ def prepare_game_job(root=ROOT):
     stop.unlink(missing_ok=True)
 
 
+def progress_notice(path,payload,stage,completed,total,context=None):
+    current=path=='/scan' and payload.get('preserveFilters') is True
+    notice={'phase':'scanning' if path=='/scan' else 'good_enhancement' if path=='/enhance' else 'good_equipment',
+            'backend':'GOODScanner','stage':stage,'completed':completed,'total':None if current else total}
+    if path=='/scan':notice.update(scope='current' if current else 'all',total_known=not current)
+    if path=='/enhance' and context:
+        notice.update({key:context[key] for key in ('target_name','target_set','off_piece') if key in context})
+    return notice
+
+
 class GoodClient:
     def __init__(self,state,root=ROOT):
         self.root=Path(root);self.state=state
@@ -195,7 +205,7 @@ class GoodClient:
             return value.get('instance')==self.state['instance'] and value.get('revision')==REVISION
         except (requests.RequestException,ValueError,RuntimeError):return False
 
-    def run(self,path,payload,directory,stage,timeout=1200):
+    def run(self,path,payload,directory,stage,timeout=1200,progress_context=None):
         window=self.request('GET','/workbench').get('window',{})
         if not window.get('found'):raise RuntimeError('未找到唯一的原神窗口。请先打开游戏；导入 JSON 和计算配装不需要打开游戏。')
         if (window.get('width'),window.get('height'))!=(1920,1080):
@@ -204,6 +214,8 @@ class GoodClient:
         directory=Path(directory);directory.mkdir(parents=True,exist_ok=True)
         intent={'stage':stage,'payload':payload,'state':'submitting','started':time.time()}
         save(directory/'request.json',intent)
+        if path=='/enhance' and stage=='open' and progress_context:
+            print(json.dumps(progress_notice(path,payload,stage,0,0,progress_context),ensure_ascii=False),flush=True)
         # POST exactly once. A timeout is not permission to replay an equip action.
         answer=self.request('POST',path,payload)
         identifier=answer.get('jobId')
@@ -232,8 +244,7 @@ class GoodClient:
                     stop_owned_backend(self.root)
                     raise RuntimeError('扫描连续 90 秒没有新增识别结果，已结束后台，不再点击。请确认停在背包圣遗物页；可重新扫描当前筛选或导入 JSON。请提供本次 stdout.log 与失败目录，不能将这次结果视为完整库存。')
             if pair!=last and time.monotonic()-notice>=2:
-                print(json.dumps({'phase':'scanning' if path=='/scan' else 'good_enhancement' if path=='/enhance' else 'good_equipment','backend':'GOODScanner','stage':stage,
-                                  'completed':pair[0],'total':pair[1]},ensure_ascii=False),flush=True)
+                print(json.dumps(progress_notice(path,payload,stage,*pair,context=progress_context),ensure_ascii=False),flush=True)
                 last=pair;notice=time.monotonic()
             time.sleep(.25)
         else:

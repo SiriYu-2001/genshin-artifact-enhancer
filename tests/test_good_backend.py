@@ -13,6 +13,20 @@ from test_import_inventory import good_artifact
 WINDOW={'window':{'found':True,'width':1920,'height':1080}}
 
 class GoodBackendTests(unittest.TestCase):
+    def test_off_piece_progress_explains_target_without_mutating_game_request(self):
+        payload={'action':'open','artifact':{'setKey':'CelestialGift'}}
+        notice=good.progress_notice('/enhance',payload,'open',0,0,{'target_name':'测试圣遗物','target_set':'天之美赐','off_piece':True,'phase':'override'})
+        self.assertTrue(notice['off_piece']);self.assertEqual(notice['target_set'],'天之美赐')
+        self.assertEqual(notice['phase'],'good_enhancement');self.assertNotIn('off_piece',payload)
+
+    def test_scoped_progress_never_presents_header_as_filtered_total(self):
+        current=good.progress_notice('/scan',{'preserveFilters':True},'scan',76,2143)
+        self.assertEqual(current['completed'],76);self.assertIsNone(current['total'])
+        self.assertEqual(current['scope'],'current');self.assertFalse(current['total_known'])
+        full=good.progress_notice('/scan',{'preserveFilters':False},'scan',76,2143)
+        self.assertEqual(full['total'],2143);self.assertEqual(full['scope'],'all')
+        self.assertEqual(good.progress_notice('/enhance',{},'step',1,2)['total'],2)
+
     def test_stage_settings_failure_distinguishes_toggle_confirmation_and_unsafe_materials(self):
         self.assertIn('未重复切换开关',good.explain_failure('Stage setting enable unverified; toggle will not be repeated'))
         self.assertIn('已停止',good.explain_failure('Five-star setting switch unreadable'))

@@ -199,6 +199,12 @@ $('save-preset').click();await tick();await tick();assert.ok(bootstrap.catalog.p
 $('template-select').value='user:'+'c'.repeat(32);$('template-select').dispatchEvent(new window.Event('change'));
 assert.equal($('delete-preset').disabled,false);
 $('delete-preset').click();await tick();await tick();assert.equal(bootstrap.catalog.presets.length,0);
+currentState={busy:true,stopping:false,can_resume:false,can_stop:true,timings:[],job:{id:'filtered-scan',kind:'scan',status:'running',logs:[JSON.stringify({phase:'scanning',backend:'GOODScanner',scope:'current',completed:76,total:2143})],started:Date.now()/1000}};
+await new Promise(r=>setTimeout(r,1750));
+assert.ok($('run-detail').textContent.includes('已检查 76 件'));assert.ok(!$('run-detail').textContent.includes('2143'));
+currentState={...currentState,job:{...currentState.job,kind:'start',logs:[JSON.stringify({phase:'good_enhancement',stage:'open',target_name:'测试圣遗物',target_set:'天之美赐',off_piece:true})]}};
+await new Promise(r=>setTimeout(r,1750));
+assert.ok($('run-detail').textContent.includes('散件候选'));assert.ok($('run-detail').textContent.includes('天之美赐'));
 currentState={busy:true,stopping:true,can_resume:false,can_stop:true,timings:[],job:{id:'test-stop',kind:'scan',status:'running',logs:[],started:Date.now()/1000}};
 await new Promise(r=>setTimeout(r,1750));
 assert.equal($('inventory-import').disabled,true);assert.ok($('run-title').textContent.includes('正在停止'));

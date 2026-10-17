@@ -7,6 +7,9 @@ ORIGINAL_ARGS=tuple(sys.argv[1:])
 
 
 def main():
+    if os.environ.get('WORKBENCH_OFFLINE_TEST')=='1':
+        from enhancer.offline_guard import install
+        install()
     import multiprocessing
     multiprocessing.freeze_support()
     args=sys.argv[1:]
@@ -33,6 +36,9 @@ def main():
         sys.argv=['enhancer',*args]
         from enhancer.__main__ import main as run
         run();return
+    if getattr(sys,'frozen',False):
+        from enhancer.package_info import verify_package
+        verify_package(root)
     import hashlib,json,socket,threading,time,urllib.request,webbrowser
     from enhancer.ui_server import serve
     identity=hashlib.sha256(str(root).encode()).hexdigest()[:16]

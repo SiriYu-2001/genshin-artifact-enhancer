@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import sqlite3
 import time
+import uuid
 
 
 class LocalStore:
@@ -12,6 +13,7 @@ class LocalStore:
         self.path=Path(path);self.path.parent.mkdir(parents=True,exist_ok=True)
         with self.connection() as db:
             db.executescript('''
+                CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS configs(id TEXT PRIMARY KEY, payload TEXT NOT NULL, updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS config_versions(id TEXT NOT NULL, revision INTEGER NOT NULL,
                     payload TEXT NOT NULL, created REAL NOT NULL, PRIMARY KEY(id,revision));
@@ -22,6 +24,10 @@ class LocalStore:
                 CREATE TABLE IF NOT EXISTS deleted_configs(id TEXT PRIMARY KEY, deleted REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS profile_presets(id TEXT PRIMARY KEY, payload TEXT NOT NULL, updated REAL NOT NULL);
             ''')
+            db.execute('INSERT OR IGNORE INTO metadata VALUES(?,?)',('instance',uuid.uuid4().hex))
+
+    def instance(self):
+        with self.connection() as db:return db.execute("SELECT value FROM metadata WHERE key='instance'").fetchone()[0]
 
     @contextmanager
     def connection(self):

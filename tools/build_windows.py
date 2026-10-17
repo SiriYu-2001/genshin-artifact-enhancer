@@ -16,6 +16,7 @@ ROOT=Path(__file__).resolve().parents[1]
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path)
+    parser.add_argument('--version',default='development-preview')
     parser.add_argument('--yas-bin-dir',type=Path,default=ROOT/'vendor/yas/target/release')
     parser.add_argument('--frostflake',type=Path,default=ROOT/'bin/cocogoat-control.exe')
     parser.add_argument('--goodscanner-bin',type=Path,default=ROOT/'bin/goodscanner/workbench_goodscanner.exe')
@@ -38,7 +39,7 @@ def main():
         command+=['--exclude-module',excluded]
     for folder in ('web','layouts','data','profiles','campaigns'):
         command+=['--add-data',str(ROOT/folder)+':'+folder]
-    for name in ('Start-Controller.ps1','Start-ControllerBootstrap.ps1','patch_yas.py','yas_readonly.rs','Build-Yas.ps1','patch_goodscanner.py','workbench_goodscanner.rs','patch_good_enhancement.py','workbench_enhance.rs','patch_workbench_feedback.py','patch_workbench_equip.py','patch_workbench_focus.py'):
+    for name in ('Start-Controller.ps1','Start-ControllerBootstrap.ps1','patch_yas.py','yas_readonly.rs','Build-Yas.ps1','patch_goodscanner.py','workbench_goodscanner.rs','patch_good_enhancement.py','workbench_enhance.rs','patch_workbench_feedback.py','patch_workbench_equip.py','patch_workbench_focus.py','patch_workbench_filtered_scan.py','patch_workbench_grid_evidence.py'):
         command+=['--add-data',str(ROOT/'tools'/name)+':tools']
     for name in ('yas_artifact.exe','yas_readonly.exe'):
         command+=['--add-binary',str(args.yas_bin_dir/name)+':vendor/yas/target/release']
@@ -80,7 +81,7 @@ def main():
     (app/'开始使用.txt').write_text('圣遗物工坊 · Windows 便携预览版\n\n完整解压后双击 ArtifactWorkbench.exe，自动打开本地网页。不需要安装 Python 或 Agent。不要只复制 EXE。\n配置与扫描数据存入同目录 runtime，请备份整个 runtime。请放在有写权限的文件夹。\n已包含 GOODScanner 后台、模型与 ONNX Runtime（旧兼容文件不参与新执行流程），不需要额外下载安装。\n扫描、换装、逐阶段强化统一使用 GOODScanner。无需手动开启任何插件。\n双击 ArtifactWorkbench.exe 时 Windows 会请求管理员授权；允许后进入工坊。\n游戏适配：1920×1080、简体中文，从背包圣遗物界面开始。点击扫描后由程序自动切回游戏，不要按 Win 键（这是中断键）。\n永不消耗五星圣遗物作为强化素材。霜/尘只提供建议。\n任务运行时按左/右Win键或网页显示的备用快捷键中断，也可点击紧急中断。\n升级保留 runtime；不要公开上传使用后的整个目录。\n',encoding='utf-8-sig')
     files=[p for p in app.rglob('*') if p.is_file()]
     assert not (app/'runtime').exists()
-    manifest={'build':datetime.now().isoformat(),'python':sys.version,'pyinstaller':metadata.version('PyInstaller'),
+    manifest={'release':args.version,'build':datetime.now().isoformat(),'python':sys.version,'pyinstaller':metadata.version('PyInstaller'),
               'files':{str(p.relative_to(app)).replace('\\','/'):hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}
     (app/'build-manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
     archive=out/'ArtifactWorkbench-portable.zip'

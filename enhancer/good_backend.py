@@ -26,7 +26,35 @@ class InputNotSent(RuntimeError):
 
 
 def explain_failure(details):
+    if 'Stage preconditions not met' in details or 'Stage preconditions changed' in details:
+        requirements=(('level_not_upgradable','当前目标已满20级，请更新库存后重新计算'),
+                      ('material_tray_not_empty','素材栏不是空的，请先移除已放入的材料'),
+                      ('stage_add_unverified','未确认“阶段放入”模式，请点击素材栏旁的齿轮，打开“开启阶段放入功能”，确认按钮显示“阶段放入”'),
+                      ('low_rarity_filter_unverified','未确认“4星及以下素材”筛选，请把素材下拉框设为“4星及以下素材”'))
+        fixes=[message for code,message in requirements if code in details]
+        if not fixes:
+            return '强化前置检查未通过，未点击阶段放入或强化。请检查目标未满20级、素材栏为空、按钮显示“阶段放入”、下拉框为“4星及以下素材”，并在放入设置中关闭五星素材。若画面已符合要求，请提供失败目录的 frame.png、error.json、request.json。'
+        return '强化前置检查未通过，未点击阶段放入或强化。'+'；'.join(fixes)+'。若画面已符合要求，请提供失败目录的 frame.png、error.json、request.json。'
+    if 'Stage observation unreadable' in details:
+        fields=(('Material count OCR','材料栏数量（已放入项数/15）'),
+                ('material count fraction','材料栏数量（已放入项数/15）'),
+                ('Material count label','材料栏标题'),
+                ('Enhancement title mismatch','圣遗物名称'),
+                ('Current level OCR','当前等级'),
+                ('Main stat label mismatch','主属性标签'),
+                ('substat layout','副属性区域'),
+                ('Substat keys changed','副属性种类'),
+                ('Not enhancement page','强化页面标识'))
+        field=next((label for token,label in fields if token in details),None)
+        if field:
+            return f'阶段放入后无法可靠识别{field}，未点击强化。失败诊断目录中的 frame.png、error.json 和 stage-observations.json 可用于排查。'
     for needle,message in (
+        ('Stage setting enable unverified','未能确认“开启阶段放入功能”已打开，未重复切换开关、未放入素材。请检查放入设置；settings-observations.json 记录了切换后的读数。'),
+        ('Stage setting switch unreadable','无法确认阶段放入开关的状态，未继续操作。请检查游戏的放入设置；失败画面及 settings-observations.json 已保存。'),
+        ('Stage setting label unverified','无法识别“开启阶段放入功能”设置项，未继续操作。请检查游戏放入设置页面。'),
+        ('Five-star setting switch unreadable','无法确认五星素材开关已关闭，已停止。请在放入设置中关闭“可快捷放入5星圣遗物作为强化素材”。'),
+        ('Material settings dialog not recognized','无法确认游戏的放入设置弹窗，已停止后续点击。请检查失败画面，不要手动点击强化。'),
+        ('Artifact filter controls not verified','圣遗物筛选面板未识别完整，已停止后续点击。请确认游戏在“背包 → 圣遗物”页面；失败目录中的 frame.png 和 observations.json 可用于排查。'),
         ('Stage add produced no materials','阶段放入后材料栏仍为空，未点击强化。请检查是否有可用的四星及以下素材或经验材料；若材料充足，请查看保存的阶段诊断。'),
         ('Stage target identity changed','阶段放入前后的目标属性不一致，未点击强化；已保存两次读数供核验。'),
         ('Stage experience changed','阶段放入前后的经验读数发生变化，未点击强化；已保存诊断。'),
@@ -60,32 +88,94 @@ def owned_process_running(state):
     kernel.OpenProcess.argtypes=[ctypes.c_ulong,ctypes.c_bool,ctypes.c_ulong];kernel.OpenProcess.restype=ctypes.c_void_p
     kernel.CloseHandle.argtypes=[ctypes.c_void_p]
     kernel.QueryFullProcessImageNameW.argtypes=[ctypes.c_void_p,ctypes.c_ulong,ctypes.c_wchar_p,ctypes.POINTER(ctypes.c_ulong)]
-    handle=kernel.OpenProcess(0x1000,False,state['pid'])
-    if not handle:return False
+    kernel.WaitForSingleObject.argtypes=[ctypes.c_void_p,ctypes.c_ulong];kernel.WaitForSingleObject.restype=ctypes.c_ulong
+    # QUERY_LIMITED_INFORMATION | SYNCHRONIZE. An exited process may remain
+    # queryable while someone holds a handle; its image path is not liveness.
+    handle=kernel.OpenProcess(0x1000|0x100000,False,state['pid'])
+    if not handle:
+        error=ctypes.get_last_error()
+        if error==87:return False  # PID no longer exists (ERROR_INVALID_PARAMETER).
+        raise RuntimeError(f'无法核验后台进程是否退出（Windows 错误 {error}），停止标记已保留；请关闭旧工坊并以管理员权限重开')
     try:
+        outcome=kernel.WaitForSingleObject(handle,0)
+        if outcome==0:return False  # WAIT_OBJECT_0: process has terminated.
+        if outcome!=0x102:raise RuntimeError(f'查询后台退出信号失败（Windows 错误 {ctypes.get_last_error()}），停止标记已保留')
         buffer=ctypes.create_unicode_buffer(4096);size=ctypes.c_ulong(len(buffer))
-        if not kernel.QueryFullProcessImageNameW(handle,0,buffer,ctypes.byref(size)):return True
+        if not kernel.QueryFullProcessImageNameW(handle,0,buffer,ctypes.byref(size)):
+            # Exit can race the image query; recheck the same process object.
+            if kernel.WaitForSingleObject(handle,0)==0:return False
+            raise RuntimeError(f'无法核验后台程序路径（Windows 错误 {ctypes.get_last_error()}），停止标记已保留')
         return os.path.normcase(buffer.value)==os.path.normcase(state['exe_path'])
     finally:kernel.CloseHandle(handle)
 
 
-def prepare_game_job(root=ROOT):
-    """A new explicit game request may clear stop only after the old backend exits."""
-    root=Path(root);stop=root/'runtime/stop.signal'
-    if not stop.exists():return
+def stop_owned_backend(root=ROOT,grace=2):
+    """Stop only the backend whose executable AND instance arguments we own."""
+    import psutil
+    root=Path(root)
     state=read(root/'runtime/goodscanner/server.json',{})
     if state.get('directory'):
         directory=Path(state['directory']).resolve()
         if not directory.is_relative_to((root/'runtime/goodscanner/instances').resolve()):raise RuntimeError('后台目录不属于当前工坊')
         if directory.exists():(directory/'shutdown.signal').touch()
-    deadline=time.monotonic()+6
+    deadline=time.monotonic()+grace
     while owned_process_running(state) and time.monotonic()<deadline:time.sleep(.1)
-    if owned_process_running(state):raise RuntimeError('上一后台仍在退出，保留中断标记，请稍后再试')
-    # Legacy enhancement controller publishes stopped only after releasing its bridge.
+    if owned_process_running(state):
+        if not state.get('directory'):raise RuntimeError('后台缺少实例目录，无法安全确认退出；请关闭旧程序')
+        try:
+            process=psutil.Process(state['pid'])
+            expected=(root/'bin/goodscanner/workbench_goodscanner.exe').resolve()
+            args=process.cmdline()
+            if Path(process.exe()).resolve()!=expected or str(directory/'config.json') not in args or str(directory/'shutdown.signal') not in args:
+                raise RuntimeError('后台身份无法核验，保留中断标记；请关闭旧工坊后重试')
+            process.kill();process.wait(timeout=2)
+        except psutil.NoSuchProcess:pass
+        except (psutil.AccessDenied,psutil.TimeoutExpired) as exc:
+            raise RuntimeError('后台未能退出，请以管理员权限重开本程序；停止标记已保留') from exc
+    if owned_process_running(state):raise RuntimeError('后台尚未退出，停止标记已保留')
+    if state:state['state']='stopped';save(root/'runtime/goodscanner/server.json',state)
+
+
+def legacy_controller_running(root):
+    """A stale JSON 'running' flag is not a live legacy controller."""
+    import psutil
+    state=read(Path(root)/'runtime/session.json',{})
+    if state.get('state')!='running':return False
+    for key in ('controller_pid','pid'):
+        if not state.get(key):continue
+        try:
+            process=psutil.Process(state[key])
+            if key=='pid' and Path(process.exe()).resolve()==(Path(root)/'bin/cocogoat-control.exe').resolve():return True
+            if key=='controller_pid' and any(str(Path(root)/'tools'/name).casefold() in ' '.join(process.cmdline()).casefold()
+                    for name in ('Start-Controller.ps1','Start-ControllerBootstrap.ps1')):return True
+        except psutil.NoSuchProcess:continue
+        except psutil.AccessDenied:return True
+    return False
+
+
+def prepare_game_job(root=ROOT):
+    """A new explicit game request may clear stop only after the old backend exits."""
+    root=Path(root);stop=root/'runtime/stop.signal'
+    unique=os.environ.get('ENHANCER_JOB_STOP_FILE')
+    if unique and Path(unique).exists():raise RuntimeError('本次任务已中断；请重新开始任务')
+    if not stop.exists():return
+    stop_owned_backend(root)
+    deadline=time.monotonic()+2
     legacy=root/'runtime/session.json'
-    while read(legacy,{}).get('state')=='running' and time.monotonic()<deadline:time.sleep(.1)
-    if read(legacy,{}).get('state')=='running':raise RuntimeError('上一强化控制器尚未停止，不能恢复输入')
+    while legacy_controller_running(root) and time.monotonic()<deadline:time.sleep(.1)
+    if legacy_controller_running(root):raise RuntimeError('旧版霜华控制器仍在运行，请退出旧工坊后重试；当前版不需要手动启动插件')
+    if unique and Path(unique).exists():raise RuntimeError('本次任务已中断；请重新开始任务')
     stop.unlink(missing_ok=True)
+
+
+def progress_notice(path,payload,stage,completed,total,context=None):
+    current=path=='/scan' and payload.get('preserveFilters') is True
+    notice={'phase':'scanning' if path=='/scan' else 'good_enhancement' if path=='/enhance' else 'good_equipment',
+            'backend':'GOODScanner','stage':stage,'completed':completed,'total':None if current else total}
+    if path=='/scan':notice.update(scope='current' if current else 'all',total_known=not current)
+    if path=='/enhance' and context:
+        notice.update({key:context[key] for key in ('target_name','target_set','off_piece') if key in context})
+    return notice
 
 
 class GoodClient:
@@ -115,7 +205,7 @@ class GoodClient:
             return value.get('instance')==self.state['instance'] and value.get('revision')==REVISION
         except (requests.RequestException,ValueError,RuntimeError):return False
 
-    def run(self,path,payload,directory,stage,timeout=1200):
+    def run(self,path,payload,directory,stage,timeout=1200,progress_context=None):
         window=self.request('GET','/workbench').get('window',{})
         if not window.get('found'):raise RuntimeError('未找到唯一的原神窗口。请先打开游戏；导入 JSON 和计算配装不需要打开游戏。')
         if (window.get('width'),window.get('height'))!=(1920,1080):
@@ -124,13 +214,15 @@ class GoodClient:
         directory=Path(directory);directory.mkdir(parents=True,exist_ok=True)
         intent={'stage':stage,'payload':payload,'state':'submitting','started':time.time()}
         save(directory/'request.json',intent)
+        if path=='/enhance' and stage=='open' and progress_context:
+            print(json.dumps(progress_notice(path,payload,stage,0,0,progress_context),ensure_ascii=False),flush=True)
         # POST exactly once. A timeout is not permission to replay an equip action.
         answer=self.request('POST',path,payload)
         identifier=answer.get('jobId')
         try:uuid.UUID(identifier)
         except (ValueError,TypeError,AttributeError):raise RuntimeError('GOODScanner 返回无效任务编号；没有重复提交')
         intent.update(state='submitted',job_id=identifier);save(directory/'request.json',intent)
-        deadline=time.monotonic()+timeout;notice=0;last=None
+        deadline=time.monotonic()+timeout;notice=0;last=None;advanced=time.monotonic();completed=None
         while time.monotonic()<deadline:
             if stop_requested(self.root):raise RuntimeError('已请求中断；未确认操作保留，不自动重发')
             blocked=read(Path(self.state['directory'])/'failures'/f'input-{identifier}.json',{})
@@ -142,12 +234,22 @@ class GoodClient:
             if state.get('state') not in ('running','pending','queued'):raise RuntimeError('GOODScanner 未正常执行任务：'+str(state.get('state')))
             progress=state.get('scanProgress',{}).get('artifacts',{}) if path=='/scan' else state.get('progress',{})
             pair=(progress.get('completed',0),progress.get('total',0))
+            if path=='/scan':
+                if pair[0]!=completed:completed=pair[0];advanced=time.monotonic()
+                elif time.monotonic()-advanced>=90:
+                    # Do not pretend a stuck final page is a complete inventory.
+                    save(directory/'stalled.json',{'job_id':identifier,'completed':completed,'total':pair[1],
+                        'reason':'no_scan_progress_90_seconds'})
+                    (self.root/'runtime/stop.signal').touch()
+                    stop_owned_backend(self.root)
+                    raise RuntimeError('扫描连续 90 秒没有新增识别结果，已结束后台，不再点击。请确认停在背包圣遗物页；可重新扫描当前筛选或导入 JSON。请提供本次 stdout.log 与失败目录，不能将这次结果视为完整库存。')
             if pair!=last and time.monotonic()-notice>=2:
-                print(json.dumps({'phase':'scanning' if path=='/scan' else 'good_enhancement' if path=='/enhance' else 'good_equipment','backend':'GOODScanner','stage':stage,
-                                  'completed':pair[0],'total':pair[1]},ensure_ascii=False),flush=True)
+                print(json.dumps(progress_notice(path,payload,stage,*pair,context=progress_context),ensure_ascii=False),flush=True)
                 last=pair;notice=time.monotonic()
             time.sleep(.25)
-        else:raise RuntimeError('GOODScanner 任务超时；未确认操作不会自动重发')
+        else:
+            (self.root/'runtime/stop.signal').touch();stop_owned_backend(self.root)
+            raise RuntimeError('GOODScanner 任务超时，已结束后台；未确认操作不会自动重发')
         result=self.request('GET','/result?jobId='+identifier)
         save(directory/'result.json',result)
         expected=['artifacts'] if path=='/scan' else ['enhance:0'] if path=='/enhance' else [f'equip:{i}' for i in range(len(payload['equip']))]
@@ -170,7 +272,7 @@ def ensure_backend(root=ROOT):
         client=GoodClient(state,root)
         if client.ready():return client
     if os.name!='nt' or not ctypes.windll.shell32.IsUserAnAdmin():raise RuntimeError('请以管理员权限启动工坊，GOODScanner 不会另行重复申请权限')
-    if (runtime/'stop.signal').exists():raise RuntimeError('存在中断标记，请从界面开始新任务后重试')
+    if stop_requested(root):raise RuntimeError('存在中断标记，请从界面开始新任务后重试')
     instance=uuid.uuid4().hex;work=directory/'instances'/instance;(work/'data').mkdir(parents=True)
     mapping=root/'data/goodscanner-mappings.json'
     if not mapping.is_file():raise RuntimeError('发行包缺少 GOODScanner 离线游戏映射')

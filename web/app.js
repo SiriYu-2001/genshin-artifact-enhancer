@@ -153,6 +153,7 @@ function itemTable(items){return `<div class="table-wrap"><table><thead><tr><th>
 function renderResults(result){
   if(!result)return;
   latestResult=result;$('download-result').disabled=false;
+  if(result.status==='stopped'){$('results').className='panel';$('results').textContent='任务已停止。已完成的记录保留，可回到库存导入或配置页面开始新任务。';return;}
   if(result.kind==='dust'){dustUI.render(result);$('results').className='panel';$('results').textContent='启圣之尘建议已保存，请在左侧“启圣之尘”页查看。';return;}
   if(result.kind==='elixir'){renderElixirResult(result);$('results').className='panel';$('results').textContent='祝圣之霜建议已保存，请在左侧“祝圣之霜”页查看。';return;}
   if(result.backend==='GOODScanner'&&result.health){$('results').className='panel';$('results').textContent=`GOODScanner 已连接 · ${result.health.gameAlive?'检测到游戏窗口':'游戏未运行（连接检查仍有效）'} · 本次没有游戏输入。`;return;}
@@ -167,7 +168,7 @@ function renderResults(result){
   if(result.equipment?.length)html+=result.equipment.map(r=>`<article class="panel result-card"><h2>${esc(r.character)} · 穿戴核验</h2><p class="small muted">已核验 ${r.verified_slots}/5 部位 · 实际变更 ${r.changed} 件</p>${r.items.map(a=>`<p class="small">${SLOT[a.slot]} · ${esc(a.name)} · ${a.status==='equipped'?'已穿戴':'原本正确'}</p>`).join('')}</article>`).join('');
   if(html){$('results').className='';$('results').innerHTML=(result.snapshot?.ownership_stale?'<div class="panel note-panel"><p class="warning">这是历史快照计算结果。快照之后发生过换装，表中的装备者与让装关系可能已变化；不借用规划需要新的归属数据。</p></div>':'')+html;}
 }
-function detailFromLogs(logs){for(let i=logs.length-1;i>=0;i--){try{const x=JSON.parse(logs[i]);if(x.message)return x.message;if(x.phase==='good_enhancement')return ({open:'正在定位并核实圣遗物…',step:'正在阶段放入并核验素材…',reconcile:'正在核对上次强化结果…',leave:'正在保存结果并返回背包…'}[x.stage]||'正在核实游戏画面…');if(x.phase==='dust')return `启圣之尘：已分析 ${x.done}/${x.total} 件，不操作游戏。`;if(x.phase==='elixir')return `祝圣之霜：已枚举 ${x.done}/${x.total} 种选择，不操作游戏。`;if(x.phase==='elixir_pairs')return '正在比较两次定制的固定候选方案，不操作游戏。';if(x.level!==undefined&&x.probability_before!==undefined)return x.probability_before==null?`正在建立起始套装：当前 +${x.level}。`:`当前 +${x.level}，上一步提升概率 ${(x.probability_before*100).toFixed(2)}%。`;if(x.eligible!==undefined)return `库存重算：${x.eligible} 件候选达到概率阈值。`;if(x.phase==='equipping_final_builds')return '强化已结束，正在按优先级穿戴最终配装。';if(x.stopped)return '单件决策已结束，正在更新库存并重算下一件。';if(x.phase==='planning')return `正在为 ${x.demands} 个需求计算配装与强化概率，本阶段不操作游戏。`;if(x.phase==='scanning')return x.backend==='GOODScanner'?`GOODScanner 正在扫描五星库存：${x.completed??0} / ${x.total||'读取中'}。`:'正在扫描库存…';if(x.phase==='good_equipment')return `GOODScanner · ${x.stage==='preflight'?'核验五件是否存在':x.stage==='verify'?'复核属性和归属':'执行穿戴'} · ${x.completed??0}/${x.total||5}`;if(x.phase==='enhancing'&&x.demand)return `正在培养 ${x.character||""} · ${x.candidate?.name||"圣遗物"}。`;if(x.scan_finished)return '扫描完成，正在计算最优配装。';if(x.preflight)return `换装预检：${x.preflight}`;if(x.slot&&x.status)return `部位 ${SLOT[x.slot]}：${x.status==='equipped'?'穿戴已核验':'原本正确，跳过'}`;}catch{}}return '本地脚本正在处理，请保持游戏界面可用。';}
+function detailFromLogs(logs){for(let i=logs.length-1;i>=0;i--){try{const x=JSON.parse(logs[i]);if(x.message)return x.message;if(x.phase==='good_enhancement'&&x.stage==='open'&&x.target_set)return `正在定位${x.off_piece?'散件候选':'目标圣遗物'}：${x.target_set} · ${x.target_name||''}。${x.off_piece?'这件可来自其他套装，最终配装仍须满足目标套装约束。':''}`;if(x.phase==='good_enhancement')return ({open:'正在定位并核实圣遗物…',step:'正在阶段放入并核验素材…',reconcile:'正在核对上次强化结果…',leave:'正在保存结果并返回背包…'}[x.stage]||'正在核实游戏画面…');if(x.phase==='dust')return `启圣之尘：已分析 ${x.done}/${x.total} 件，不操作游戏。`;if(x.phase==='elixir')return `祝圣之霜：已枚举 ${x.done}/${x.total} 种选择，不操作游戏。`;if(x.phase==='elixir_pairs')return '正在比较两次定制的固定候选方案，不操作游戏。';if(x.level!==undefined&&x.probability_before!==undefined)return x.probability_before==null?`正在建立起始套装：当前 +${x.level}。`:`当前 +${x.level}，上一步提升概率 ${(x.probability_before*100).toFixed(2)}%。`;if(x.eligible!==undefined)return `库存重算：${x.eligible} 件候选达到概率阈值。`;if(x.phase==='equipping_final_builds')return '强化已结束，正在按优先级穿戴最终配装。';if(x.stopped)return '单件决策已结束，正在更新库存并重算下一件。';if(x.phase==='planning')return `正在为 ${x.demands} 个需求计算配装与强化概率，本阶段不操作游戏。`;if(x.phase==='scanning')return x.scope==='current'?`正在扫描当前筛选：已检查 ${x.completed??0} 件，总数将在到达列表末尾后确定。`:x.backend==='GOODScanner'?`GOODScanner 正在扫描全库：${x.completed??0} / ${x.total||'读取中'}。`:'正在扫描库存…';if(x.phase==='good_equipment')return `GOODScanner · ${x.stage==='preflight'?'核验五件是否存在':x.stage==='verify'?'复核属性和归属':'执行穿戴'} · ${x.completed??0}/${x.total||5}`;if(x.phase==='enhancing'&&x.demand)return `正在培养 ${x.character||""} · ${x.candidate?.name||"圣遗物"}。`;if(x.scan_finished)return '扫描完成，正在计算最优配装。';if(x.preflight)return `换装预检：${x.preflight}`;if(x.slot&&x.status)return `部位 ${SLOT[x.slot]}：${x.status==='equipped'?'穿戴已核验':'原本正确，跳过'}`;}catch{}}return '本地脚本正在处理，请保持游戏界面可用。';}
 async function refreshState(){
   try{const state=await api('/api/state');busy=state.busy;inventoryPanel?.state(busy);dustUI?.state(state);if(state.hotkey?.last_stop_requested>lastEmergencyAt){lastEmergencyAt=state.hotkey.last_stop_requested;notify('已紧急中断当前任务；未确认记录已保留');}$('hotkey-status').textContent=[state.hotkey?.win_registered?'Win键：有任务时中断，保留系统功能':'',state.hotkey?.registered?state.hotkey.shortcut+'：全局紧急中断':'',state.hotkey?.error||''].filter(Boolean).join(' · ')||'全局快捷键未启用；可使用紧急中断按钮';
     if(state.timings?.length)$('timings').innerHTML=`<table><thead><tr><th>读取类型</th><th>次数</th><th>平均</th><th>P90</th></tr></thead><tbody>${state.timings.map(t=>`<tr><td>${esc(t.name)}</td><td>${t.count}</td><td>${t.average_ms} ms</td><td>${t.p90_ms} ms</td></tr>`).join('')}</tbody></table>`;
@@ -183,9 +184,12 @@ async function refreshState(){
     }
     const labels={running:'任务正在运行',completed:'任务完成',deferred:'已结束，有待处理项',failed:'任务已停止，需要处理',stopped:'本轮已结束，进度已保存'};
     const kind={preview:'离线配装计算',scan:'扫描库存',reconcile:'核对上次结果',start:'序贯强化',resume:'继续强化',equip:'保存配装穿戴',elixir:'祝圣之霜建议',dust:'启圣之尘建议'};
-    $('run-title').textContent=labels[job.status]||job.status;$('run-dot').className='status-dot '+job.status;
+    $('run-title').textContent=state.stopping?'正在停止输入并退出后台':labels[job.status]||job.status;$('run-dot').className='status-dot '+job.status;
     const sec=Math.floor(((job.finished||Date.now()/1000)-job.started));$('elapsed').textContent=`${kind[job.kind]} · ${Math.floor(sec/60)}分${sec%60}秒`;
     $('run-detail').textContent=job.status==='running'?detailFromLogs(job.logs):job.status==='failed'?(job.result?.error||'请展开日志查看原因。未确认的操作不会自动重复提交。'):job.status==='deferred'?'可处理候选已结束，仍有概率边界或缺少基准的需求。':job.status==='stopped'?'可以开始其他任务，也可以选择继续上次进度。':'结果与记录已保存到本机。';
+    if(state.stopping)$('run-detail').textContent='正在确认工作进程和游戏后台退出。完成后可以导入库存或开始新任务。';
+    else if(state.stop_error)$('run-detail').textContent='停止未完成：'+state.stop_error;
+    else if(job.status==='stopped')$('run-detail').textContent=state.can_resume?'已停止，可以继续上次强化或开始其他任务。':'已停止。扫描不能续扫，请回到“库存导入”重新扫描或导入 JSON。';
     $('run-progress').hidden=!busy;$('logs').textContent=job.logs.join('\n')||'等待脚本输出…';
     $('save-loadouts').disabled=busy||!job.result?.demands||!['completed','deferred'].includes(job.status);
     const stamp=JSON.stringify(job.result);if(stamp!==renderStamp){renderStamp=stamp;renderResults(job.kind==='elixir'&&job.result?.kind==='elixir'?{...job.result,calculated_at:job.finished}:job.result);}
@@ -193,7 +197,7 @@ async function refreshState(){
     window.__lastBusy=busy;
   }catch(e){$('connection-dot').className='';$('connection').textContent='本地服务未连接';}
 }
-async function saveCurrent(){if(!validateForm($('profile-form')))throw Error('请补全有效的数字与角色配置');const result=await api('/api/config',{id:configId,config:serializeDraft(draft,active)});configId=result.id;persist();$('save-state').textContent='已保存到本地数据库';return result.id;}
+async function saveCurrent(){if(!validateForm($('profile-form')))throw Error('请补全有效的数字与角色配置');const result=await api('/api/config',{id:configId,config:serializeDraft(draft,active)});configId=result.id;persist();$('save-state').textContent='已保存到本地数据库';if(result.recovered_missing)notify('原配置记录不存在，已将当前表单保存为新配置');return result.id;}
 async function launch(kind,scope="current"){
   if(['preview','equip'].includes(kind)&&!$('snapshot').value){showPage('inventory');throw Error('请先导入或扫描库存');}
   const data={kind};if(['start','preview'].includes(kind))data.config_id=await saveCurrent();
@@ -251,7 +255,7 @@ function events(){
   $('export-config').onclick=()=>download(serializeDraft(draft,active),draft.name);
   $('import-config').onclick=()=>$('import-file').click();$('import-file').onchange=protect(async e=>{const file=e.target.files[0];if(!file)return;const data=importDraft(JSON.parse(await file.text()));const saved=await api('/api/config',{config:data});draft=saved.config;configId=saved.id;active=0;renderDraft();persist();catalog=await api('/api/catalog');renderCatalog();notify('配置已导入');e.target.value='';});
   for(const [id,kind] of [['check-backend','backend-check'],['preview','preview'],['start','start'],['resume','resume'],['equip-loadouts','equip']])$(id).onclick=protect(()=>launch(kind));
-  $('emergency-stop').onclick=protect(async()=>{await api('/api/emergency-stop',{});notify('已停止输入，正在结束任务');await refreshState();});
+  $('emergency-stop').onclick=protect(async()=>{await api('/api/emergency-stop',{});notify('已发出中断请求，正在确认后台退出');await refreshState();});
   $('resume').onclick=protect(()=>launch(window.__needsReconciliation?'reconcile':'resume'));$('stop').onclick=protect(async()=>{await api('/api/stop',{});notify('正在结束本轮；已完成的进度会保留');await refreshState();});
   $('save-loadouts').onclick=protect(async()=>{await api('/api/save-loadouts',{});catalog=await api('/api/catalog');renderCatalog();notify('五件配装已保存到本地库');});
   $('download-result').onclick=()=>latestResult&&download(latestResult,'圣遗物配装结果');
@@ -259,6 +263,7 @@ function events(){
 }
 export async function boot(){
   const data=await api('/api/bootstrap');token=data.token;catalog=data.catalog;storageInstance=data.instance||'default';
+  if($('build-version'))$('build-version').textContent=`${data.build?.version||'开发版'} · ${data.build?.backend||'GOODScanner'} · 离线运行`;
   const fallback=catalog.profiles.find(p=>p.id==='奥黛塔')||catalog.profiles[0];if(!fallback)throw Error('没有可用的初始角色配置');
   draft={version:1,name:'我的圣遗物培养计划',mode:'single',equipment:'borrow',allocation:'priority',demands:[makeDemand(fallback.data)],scenarios:null};
   let localContext=null;

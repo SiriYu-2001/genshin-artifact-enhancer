@@ -13,6 +13,63 @@ from test_import_inventory import good_artifact
 WINDOW={'window':{'found':True,'width':1920,'height':1080}}
 
 class GoodBackendTests(unittest.TestCase):
+    def test_scoped_end_cannot_override_unconfirmed_positions(self):
+        audit={'jobId':'synthetic','complete':True,'termination':'UnchangedPage','expected':12,'visited':12,
+               'five_star':10,'accepted':10,'skipped_lower_rarity':2,'unknown_rarity':0,'missed':0,'skipped_positions':0,
+               'scope':'observed_filter_results','account_complete':False,'inventory_header_count':2400}
+        good.validate_scan_audit(audit,'synthetic',10,'current')
+        with self.assertRaises(RuntimeError):
+            good.validate_scan_audit(dict(audit,missed=1),'synthetic',10,'current')
+
+    def test_off_piece_progress_explains_target_without_mutating_game_request(self):
+        payload={'action':'open','artifact':{'setKey':'CelestialGift'}}
+        notice=good.progress_notice('/enhance',payload,'open',0,0,{'target_name':'测试圣遗物','target_set':'天之美赐','off_piece':True,'phase':'override'})
+        self.assertTrue(notice['off_piece']);self.assertEqual(notice['target_set'],'天之美赐')
+        self.assertEqual(notice['phase'],'good_enhancement');self.assertNotIn('off_piece',payload)
+
+    def test_scoped_progress_never_presents_header_as_filtered_total(self):
+        current=good.progress_notice('/scan',{'preserveFilters':True},'scan',76,2143)
+        self.assertEqual(current['completed'],76);self.assertIsNone(current['total'])
+        self.assertEqual(current['scope'],'current');self.assertFalse(current['total_known'])
+        full=good.progress_notice('/scan',{'preserveFilters':False},'scan',76,2143)
+        self.assertEqual(full['total'],2143);self.assertEqual(full['scope'],'all')
+        self.assertEqual(good.progress_notice('/enhance',{},'step',1,2)['total'],2)
+
+    def test_stage_settings_failure_distinguishes_toggle_confirmation_and_unsafe_materials(self):
+        self.assertIn('未重复切换开关',good.explain_failure('Stage setting enable unverified; toggle will not be repeated'))
+        self.assertIn('已停止',good.explain_failure('Five-star setting switch unreadable'))
+        self.assertIn('未继续操作',good.explain_failure('Stage setting switch unreadable'))
+        self.assertIn('放入设置弹窗',good.explain_failure('Material settings dialog not recognized'))
+    def test_stage_preconditions_explain_each_failed_requirement(self):
+        for code,expected in (('level_not_upgradable','当前目标已满20级'),
+                              ('material_tray_not_empty','先移除已放入的材料'),
+                              ('stage_add_unverified','未确认“阶段放入”模式'),
+                              ('low_rarity_filter_unverified','未确认“4星及以下素材”筛选')):
+            message=good.explain_failure('Stage preconditions not met: '+code+'; observed={}')
+            self.assertIn(expected,message)
+            self.assertIn('未点击阶段放入或强化',message)
+        message=good.explain_failure('Stage preconditions not met: stage_add_unverified,low_rarity_filter_unverified')
+        self.assertIn('未确认“阶段放入”模式',message)
+        self.assertIn('未确认“4星及以下素材”筛选',message)
+        message=good.explain_failure('Stage preconditions not met: low_rarity_filter_unverified')
+        self.assertNotIn('未确认“阶段放入”模式',message)
+
+    def test_legacy_stage_preconditions_ask_for_checks_without_claiming_a_known_cause(self):
+        for error in ('Stage preconditions not met','Stage preconditions changed'):
+            message=good.explain_failure(error)
+            for expected in ('请检查','素材栏为空','4星及以下素材','关闭五星素材','frame.png'):
+                self.assertIn(expected,message)
+
+    def test_stage_error_reports_failed_field_for_old_and_new_backend(self):
+        for reason in ('Unreadable material count fraction',
+                       'Material count OCR: wide=[]; isolated=[]; labels=[]: Unreadable isolated material count fraction'):
+            message=good.explain_failure('Stage observation unreadable: '+reason+'; no confirmation sent')
+            self.assertIn('材料栏数量',message)
+            self.assertIn('未点击强化',message)
+            self.assertIn('stage-observations.json',message)
+        self.assertIn('当前等级',good.explain_failure('Stage observation unreadable: Current level OCR: []'))
+        self.assertIn('无法完整识别',good.explain_failure('Stage observation unreadable: unknown field'))
+
     def scan_receipt(self,client,root):
         client.state={'directory':str(root)}
         receipt={'jobId':'synthetic','complete':True,'termination':'Exhausted','expected':2,'visited':2,

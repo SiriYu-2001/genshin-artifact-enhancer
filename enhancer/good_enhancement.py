@@ -20,6 +20,7 @@ from .report import load_scan
 from .transitions import enhancement_result
 from .good_backend import ensure_backend,read,set_key_to_good,wire_identity,InputNotSent
 from .stage_proof import StageProof,validate_restricted_stage
+from .sets import SET_LABELS
 
 
 def wire(a):
@@ -97,7 +98,9 @@ def main(reconcile_only=False):
         body=payload or {'action':action,'operationId':str(uuid.uuid4()),'artifact':wire(target),'name':names[target_id],'sourceKind':target.special}
         directory=run/'native'/body['operationId']
         try:
-            _,response=client.run('/enhance',body,directory,action,timeout=600)
+            _,response=client.run('/enhance',body,directory,action,timeout=600,
+                progress_context={'target_name':names[target_id],'target_set':SET_LABELS.get(target.set_key,target.set_key),
+                                  'off_piece':target.set_key!=profile.data['set_key']})
         except Exception as exc:
             save(run/'last-error.json',{'stage':action,'operation_id':body['operationId'],'message':str(exc),'time':datetime.now().isoformat()})
             raise

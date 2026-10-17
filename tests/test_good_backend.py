@@ -13,6 +13,14 @@ from test_import_inventory import good_artifact
 WINDOW={'window':{'found':True,'width':1920,'height':1080}}
 
 class GoodBackendTests(unittest.TestCase):
+    def test_scoped_end_cannot_override_unconfirmed_positions(self):
+        audit={'jobId':'synthetic','complete':True,'termination':'UnchangedPage','expected':12,'visited':12,
+               'five_star':10,'accepted':10,'skipped_lower_rarity':2,'unknown_rarity':0,'missed':0,'skipped_positions':0,
+               'scope':'observed_filter_results','account_complete':False,'inventory_header_count':2400}
+        good.validate_scan_audit(audit,'synthetic',10,'current')
+        with self.assertRaises(RuntimeError):
+            good.validate_scan_audit(dict(audit,missed=1),'synthetic',10,'current')
+
     def test_off_piece_progress_explains_target_without_mutating_game_request(self):
         payload={'action':'open','artifact':{'setKey':'CelestialGift'}}
         notice=good.progress_notice('/enhance',payload,'open',0,0,{'target_name':'测试圣遗物','target_set':'天之美赐','off_piece':True,'phase':'override'})

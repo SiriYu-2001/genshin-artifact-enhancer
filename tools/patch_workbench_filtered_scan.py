@@ -34,4 +34,7 @@ fn workbench_scan_config(config:&GoodArtifactScannerConfig,scoped:bool)->Backpac
     }
 }
 ''')
-if __name__=='__main__':main()
+if __name__=='__main__':
+    main()
+    import runpy
+    runpy.run_path(str(Path(__file__).with_name('patch_workbench_grid_evidence.py')),run_name='__main__')

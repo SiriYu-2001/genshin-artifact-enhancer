@@ -38,6 +38,7 @@ def public_report(data):
     if 'report' in data:
         result=public_report(data['report']);result['status']=data.get('status',result.get('status'))
         if data.get('equipment'):result['equipment']=public_report(data['equipment']).get('equipment',[])
+        if data.get('error'):result['error']=data['error']
         return result
     keys=('status','scores','items','confirmations','conflicts','shared_items','transfers','blocked_demands','error','scan_directory','snapshot_id','backend','revision','health','game_input')
     result={k:data[k] for k in keys if k in data}
@@ -49,6 +50,8 @@ def public_report(data):
     if 'demands' in data:
         result['demands']=[{k:r[k] for k in ('id','name','character','status','score','before','gain','independent_score','items','eligible_count','bootstrap','artifact_energy_recharge_min','artifact_energy_recharge_total') if k in r}
                            | {'deferred_count':len(r.get('deferred',[]))} for r in data['demands']]
+    from .review_report import review_items
+    result['review_items']=review_items(data)
     result['remaining_count']=len(data.get('remaining_eligible',[]))
     result['deferred_count']=len(data.get('deferred',[]))
     return result
@@ -273,10 +276,12 @@ class Backend:
         session=read(self.runtime/'session.json',{})
         from .telemetry import recent
         unfinished=active.get('status') not in (None,'finished','finished-with-deferred','cancelled')
-        failed_game=bool(self.job and self.job.get('kind') in ('scan','start','resume','equip','reconcile') and self.job.get('status')=='failed' and not self.job.get('stop_requested'))
+        failed_game=bool(self.job and self.job.get('kind') in ('scan','start','resume','equip','retry-equip','reconcile') and self.job.get('status')=='failed' and not self.job.get('stop_requested'))
         self.stop_available=unfinished or failed_game
         from .job_control import pending_operations
-        return {'job':job,'hotkey':self.hotkey.status() if getattr(self,'hotkey',None) else None,'can_resume':active.get('status') in ('stopped','needs-attention','cancelled'),
+        from .equipment_recovery import recovery_state
+        equipment_recovery=recovery_state(self.runtime)
+        return {'equipment_recovery':equipment_recovery,'job':job,'hotkey':self.hotkey.status() if getattr(self,'hotkey',None) else None,'can_resume':active.get('status') in ('stopped','needs-attention','cancelled'),
                 'unfinished_batch':unfinished,'can_stop':bool(self.process and self.process.poll() is None) or self.stop_available,
                 'needs_reconciliation':bool(pending_operations(self.runtime)),
                 'controller':session.get('state','stopped'),'busy':self.busy(),'stopping':self.stopping,'stop_error':self.stop_error,
@@ -286,7 +291,7 @@ class Backend:
         with self.lock:
             if self.busy():raise ValueError('正在结束上一个任务，请等待停止完成' if self.stopping else '已有任务运行中，请先等待完成或停止')
             kind=payload.get('kind')
-            if kind not in ('scan','preview','start','resume','equip','elixir','dust','backend-check','reconcile'):raise ValueError('未知操作')
+            if kind not in ('scan','preview','start','resume','equip','retry-equip','elixir','dust','backend-check','reconcile'):raise ValueError('未知操作')
             request={'kind':kind}
             if kind in ('scan','start'):
                 request['scope']=payload.get('scope','current')
@@ -309,6 +314,15 @@ class Backend:
                 ids=payload.get('ids')
                 if not isinstance(ids,list) or not ids or len(ids)!=len(set(ids)) or any(i not in library['loadouts'] for i in ids):raise ValueError('请选择已保存的配装')
                 request['ids']=ids
+            if kind=='retry-equip':
+                from .equipment_recovery import recovery_state
+                from .job_control import pending_operations
+                if not recovery_state(self.runtime):raise ValueError('没有可重试的换装任务')
+                if pending_operations(self.runtime):raise ValueError('请先核对未确认的强化结果')
+                if read(self.runtime/'active-batch.json',{}).get('status') not in (None,'finished','finished-with-deferred','cancelled'):
+                    raise ValueError('请先完成或结束当前强化任务，再恢复穿戴')
+                request['allow_borrow']=payload.get('allow_borrow',False)
+                if type(request['allow_borrow']) is not bool:raise ValueError('本次借用选项必须为布尔值')
             if kind=='resume' and not self.state()['can_resume']:raise ValueError('没有可继续的强化任务')
             if kind in ('scan','start','equip'):
                 active=read(self.runtime/'active-batch.json',{})
@@ -329,7 +343,7 @@ class Backend:
                  'output':request['output'],'request':request,'stop_requested':False,'worker_pid':process.pid}
             save(directory/'job.json',{k:v for k,v in job.items() if k!='logs'})
             self.process=process;self.job=job;self.jobs[identifier]=job
-            if kind in ('scan','start','resume','equip','reconcile'):self.stop_available=True
+            if kind in ('scan','start','resume','equip','retry-equip','reconcile'):self.stop_available=True
             threading.Thread(target=self.monitor,args=(process,job,directory),daemon=True).start()
             return {'id':identifier}
 
@@ -352,7 +366,7 @@ class Backend:
                 if job['stop_requested'] and job['kind'] in ('start','resume','equip'):
                     from .job_control import cancel_batch
                     cancel_batch(self.runtime)
-                if job['kind'] in ('scan','start','resume','equip','reconcile'):
+                if job['kind'] in ('scan','start','resume','equip','retry-equip','reconcile'):
                     self.stop_available=job['status']=='failed' and not job['stop_requested']
             save(directory/'job.json',{k:v for k,v in job.items() if k!='logs'})
         # Disk cleanup must never hold the task-submission/stop lock.
@@ -377,7 +391,7 @@ class Backend:
             if not self.process or self.process.poll() is not None:
                 from .job_control import cancel_batch
                 ended=cancel_batch(self.runtime)
-                if self.job and self.job.get('kind') in ('scan','start','resume','equip','reconcile') and self.job.get('status')=='failed':
+                if self.job and self.job.get('kind') in ('scan','start','resume','equip','retry-equip','reconcile') and self.job.get('status')=='failed':
                     self.job.update(stop_requested=True,status='stopped');ended=True
                     if __import__('re').fullmatch(r'[0-9a-f]{32}',self.job.get('id','')):
                         save(self.directory/'jobs'/self.job['id']/'job.json',{k:v for k,v in self.job.items() if k!='logs'})

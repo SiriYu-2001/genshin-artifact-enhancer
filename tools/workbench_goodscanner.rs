@@ -21,6 +21,15 @@ fn main() -> anyhow::Result<()> {
     log::set_max_level(log::LevelFilter::Debug);
     let mut args=std::env::args().skip(1);
     let first=args.next().ok_or_else(||anyhow::anyhow!("port or --replay-selection required"))?;
+    if first=="--replay-equipment-scroll" {
+        let jobs:serde_json::Value=serde_json::from_slice(&std::fs::read(args.next().ok_or_else(||anyhow::anyhow!("frame manifest required"))?)?)?;
+        for row in jobs.as_array().ok_or_else(||anyhow::anyhow!("array required"))? {
+            let filename=row["image"].as_str().ok_or_else(||anyhow::anyhow!("image required"))?;
+            let frame=image::open(filename)?.to_rgb8();
+            println!("{}",serde_json::json!({"image":filename,"thumb":genshin_scanner::manager::ui_actions::workbench_selection_thumb(&frame)}));
+        }
+        return Ok(());
+    }
     if first=="--replay-corpus" {
         use std::io::{BufRead,Write};
         let input=std::io::BufReader::new(std::fs::File::open(args.next().ok_or_else(||anyhow::anyhow!("JSONL corpus required"))?)?);

@@ -25,6 +25,20 @@ class InputNotSent(RuntimeError):
     """The request was positively rejected before any game operation was queued."""
 
 
+def add_failure_note(error,message):
+    """Keep the primary exception intact on packaged Python 3.10 as well."""
+    if hasattr(error,'add_note'):error.add_note(message)
+    else:
+        error.__notes__=getattr(error,'__notes__',[])+[message]
+        print(json.dumps({'phase':'backend_cleanup_failed','message':message},ensure_ascii=False),flush=True)
+
+
+def failure_details(rows):
+    # A skipped earlier slot can precede the actual failed flex slot in wire order.
+    primary=[r for r in rows if r.get('status') not in ('skipped','aborted')]
+    return '；'.join(dict.fromkeys(str(r.get('message',r.get('status'))) for r in (primary or rows)))
+
+
 def explain_failure(details):
     if 'Stage preconditions not met' in details or 'Stage preconditions changed' in details:
         requirements=(('level_not_upgradable','当前目标已满20级，请更新库存后重新计算'),
@@ -63,6 +77,10 @@ def explain_failure(details):
         ('Unresolved enhancement confirmation','本次强化的结果还未确认。请保持该圣遗物的强化页，点击“核对上次结果”；程序不会重发确认。'),
         ('Game window activation failed','无法把原神切到前台。请点击游戏窗口，再继续任务。'),
         ('Target search interrupted','定位过程中翻页或截图被中断，尚未查完目标列表；这不表示圣遗物不存在。具体终止原因已记录，未确认强化。'),
+        ('Borrowing is disabled','这件目标目前穿在其他角色身上，原配装禁止借用。可以手动卸下后重试，或在恢复面板明确勾选本次允许借用；不会自动放宽原配置。'),
+        ('Exact equipment target not found','未找到与保存属性完全一致的换装目标，本部位未点击装备。可在角色圣遗物页重试穿戴；若库存有手动变化，请重新扫描或导入并计算配装。'),
+        ('Equipment search scroll unverified','换装列表的滚动位置无法确认，搜索已停止；不表示目标不存在。请回到角色圣遗物页重试穿戴，仍失败请提供本次换装日志与失败画面。'),
+        ('Equipment set filter unverified','未能确认换装套装筛选已生效，已停止定位。请回到角色圣遗物页后重试穿戴。'),
         ('Exact target not located','未找到属性一致的目标。请检查库存是否已变化，必要时重新导入或扫描。'),
         ('Five-star quick-add','未确认五星快捷放入已关闭。请在游戏的放入设置中关闭五星素材后重试。'),
         ('Five-star or unrecognized material','素材星级未通过检查，本次确认已被阻止。'),
@@ -109,11 +127,17 @@ def owned_process_running(state):
     finally:kernel.CloseHandle(handle)
 
 
-def stop_owned_backend(root=ROOT,grace=2):
+def same_backend_instance(first,second):
+    """A client may stop only its original instance, never a newer owner record."""
+    return bool(first.get('instance')) and all(first.get(k)==second.get(k)
+        for k in ('instance','pid','directory','exe_path','endpoint'))
+
+
+def stop_owned_backend(root=ROOT,grace=2,*,expected_state=None):
     """Stop only the backend whose executable AND instance arguments we own."""
     import psutil
     root=Path(root)
-    state=read(root/'runtime/goodscanner/server.json',{})
+    state=read(root/'runtime/goodscanner/server.json',{}) if expected_state is None else dict(expected_state)
     if state.get('directory'):
         directory=Path(state['directory']).resolve()
         if not directory.is_relative_to((root/'runtime/goodscanner/instances').resolve()):raise RuntimeError('后台目录不属于当前工坊')
@@ -133,7 +157,9 @@ def stop_owned_backend(root=ROOT,grace=2):
         except (psutil.AccessDenied,psutil.TimeoutExpired) as exc:
             raise RuntimeError('后台未能退出，请以管理员权限重开本程序；停止标记已保留') from exc
     if owned_process_running(state):raise RuntimeError('后台尚未退出，停止标记已保留')
-    if state:state['state']='stopped';save(root/'runtime/goodscanner/server.json',state)
+    current=read(root/'runtime/goodscanner/server.json',{})
+    if state and (same_backend_instance(state,current) or expected_state is None and state==current):
+        state['state']='stopped';save(root/'runtime/goodscanner/server.json',state)
 
 
 def legacy_controller_running(root):
@@ -205,6 +231,28 @@ class GoodClient:
             return value.get('instance')==self.state['instance'] and value.get('revision')==REVISION
         except (requests.RequestException,ValueError,RuntimeError):return False
 
+    def stop_failed_operation(self,directory,error):
+        # A lost reply is not proof that the native worker stopped. Stop only
+        # this client's instance; a stale client must not signal a newer one.
+        cleanup_error=None
+        try:
+            current=read(self.root/'runtime/goodscanner/server.json',{})
+            if same_backend_instance(self.state,current):
+                (self.root/'runtime/stop.signal').touch()
+        except Exception as exc:
+            add_failure_note(error,'无法保存全局中断标记，仍将停止本次后台：'+str(exc))
+        try:
+            stop_owned_backend(self.root,expected_state=self.state)
+        except Exception as exc:
+            cleanup_error=str(exc)
+            add_failure_note(error,'原请求失败后未能确认其后台退出；保留原请求记录，不重发操作：'+cleanup_error)
+        try:
+            save(Path(directory)/'interrupted.json',{'error':str(error),'instance':self.state.get('instance'),
+                'backend_exit_confirmed':cleanup_error is None,'cleanup_error':cleanup_error,
+                'request_replayed':False})
+        except Exception as exc:
+            add_failure_note(error,'后台中断诊断无法保存：'+str(exc))
+
     def run(self,path,payload,directory,stage,timeout=1200,progress_context=None):
         window=self.request('GET','/workbench').get('window',{})
         if not window.get('found'):raise RuntimeError('未找到唯一的原神窗口。请先打开游戏；导入 JSON 和计算配装不需要打开游戏。')
@@ -216,6 +264,15 @@ class GoodClient:
         save(directory/'request.json',intent)
         if path=='/enhance' and stage=='open' and progress_context:
             print(json.dumps(progress_notice(path,payload,stage,0,0,progress_context),ensure_ascii=False),flush=True)
+        try:
+            return self.run_submitted(path,payload,directory,stage,intent,timeout,progress_context)
+        except InputNotSent:
+            raise  # Positive rejection before queuing: no uncertain input to stop.
+        except Exception as exc:
+            self.stop_failed_operation(directory,exc)
+            raise
+
+    def run_submitted(self,path,payload,directory,stage,intent,timeout,progress_context):
         # POST exactly once. A timeout is not permission to replay an equip action.
         answer=self.request('POST',path,payload)
         identifier=answer.get('jobId')
@@ -240,16 +297,13 @@ class GoodClient:
                     # Do not pretend a stuck final page is a complete inventory.
                     save(directory/'stalled.json',{'job_id':identifier,'completed':completed,'total':pair[1],
                         'reason':'no_scan_progress_90_seconds'})
-                    (self.root/'runtime/stop.signal').touch()
-                    stop_owned_backend(self.root)
-                    raise RuntimeError('扫描连续 90 秒没有新增识别结果，已结束后台，不再点击。请确认停在背包圣遗物页；可重新扫描当前筛选或导入 JSON。请提供本次 stdout.log 与失败目录，不能将这次结果视为完整库存。')
+                    raise RuntimeError('扫描连续 90 秒没有新增识别结果，已停止等待并请求结束本次后台。请确认停在背包圣遗物页；可重新扫描当前筛选或导入 JSON。请提供本次 stdout.log 与失败目录，不能将这次结果视为完整库存。')
             if pair!=last and time.monotonic()-notice>=2:
                 print(json.dumps(progress_notice(path,payload,stage,*pair,context=progress_context),ensure_ascii=False),flush=True)
                 last=pair;notice=time.monotonic()
             time.sleep(.25)
         else:
-            (self.root/'runtime/stop.signal').touch();stop_owned_backend(self.root)
-            raise RuntimeError('GOODScanner 任务超时，已结束后台；未确认操作不会自动重发')
+            raise RuntimeError('GOODScanner 任务超时，已停止等待并请求结束本次后台；未确认操作不会自动重发')
         result=self.request('GET','/result?jobId='+identifier)
         save(directory/'result.json',result)
         expected=['artifacts'] if path=='/scan' else ['enhance:0'] if path=='/enhance' else [f'equip:{i}' for i in range(len(payload['equip']))]
@@ -257,7 +311,7 @@ class GoodClient:
         if len(rows)!=len(expected) or {r.get('id') for r in rows}!=set(expected):raise RuntimeError('GOODScanner 结果缺项或重复，不能视为完成')
         good={'already_correct'} if payload.get('verifyOnly') else {'success','already_correct'}
         failed=[r for r in rows if r.get('status') not in good]
-        if failed:raise RuntimeError(explain_failure('；'.join(str(r.get('message',r.get('status'))) for r in failed[:3])))
+        if failed:raise RuntimeError(explain_failure(failure_details(failed)))
         return identifier,result
 
 
@@ -268,10 +322,22 @@ def ensure_backend(root=ROOT):
     if not executable.is_file():raise RuntimeError('发行包缺少 GOODScanner 后台程序，请完整解压新版 ZIP')
     digest=hashlib.sha256(executable.read_bytes()).hexdigest()
     state=read(directory/'server.json',{})
+    if stop_requested(root):raise RuntimeError('存在中断标记，请从界面开始新任务后重试')
     if state.get('state')=='running' and state.get('exe_hash')==digest:
-        client=GoodClient(state,root)
-        if client.ready():return client
+        try:client=GoodClient(state,root)
+        except (ValueError,KeyError):client=None
+        if client is not None and client.ready():
+            if stop_requested(root):raise RuntimeError('后台检查期间已请求中断，未开始新操作')
+            return client
     if os.name!='nt' or not ctypes.windll.shell32.IsUserAnAdmin():raise RuntimeError('请以管理员权限启动工坊，GOODScanner 不会另行重复申请权限')
+    # A failed health check does not prove the old process is dead. Preserve its
+    # identity until bounded shutdown succeeds, including starting/failed states.
+    if state:
+        if state.get('pid') and not state.get('exe_path'):
+            raise RuntimeError('旧后台记录缺少程序路径，无法安全确认退出；请关闭旧工坊后重试')
+        if state.get('state') in ('running','starting','failed') and not state.get('pid'):
+            raise RuntimeError('旧后台记录缺少进程编号，无法安全确认退出；请关闭旧工坊后重试')
+        stop_owned_backend(root,expected_state=state)
     if stop_requested(root):raise RuntimeError('存在中断标记，请从界面开始新任务后重试')
     instance=uuid.uuid4().hex;work=directory/'instances'/instance;(work/'data').mkdir(parents=True)
     mapping=root/'data/goodscanner-mappings.json'
@@ -294,17 +360,37 @@ def ensure_backend(root=ROOT):
                                  stdout=log,stderr=subprocess.STDOUT,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
     state={'state':'starting','pid':process.pid,'instance':instance,'endpoint':f'http://127.0.0.1:{port}',
            'token':token,'directory':str(work),'exe_hash':digest,'exe_path':str(executable),'revision':REVISION}
-    save(directory/'server.json',state);client=GoodClient(state,root)
-    deadline=time.monotonic()+40
-    while time.monotonic()<deadline:
-        if client.ready():
-            state['state']='running';save(directory/'server.json',state)
-            print(json.dumps({'phase':'good_ready','backend':'GOODScanner','message':'包内 GOODScanner 已就绪；扫描、穿戴与强化使用统一后台'},ensure_ascii=False),flush=True)
-            return client
-        if process.poll() is not None:break
-        time.sleep(.25)
-    shutdown.touch();state['state']='failed';save(directory/'server.json',state)
-    raise RuntimeError('GOODScanner 启动失败，请查看 runtime/goodscanner/instances 下的 server.log')
+    try:
+        save(directory/'server.json',state);client=GoodClient(state,root)
+        deadline=time.monotonic()+40
+        while time.monotonic()<deadline:
+            if stop_requested(root):raise RuntimeError('后台启动期间已请求中断，未开始游戏操作')
+            if client.ready():
+                if stop_requested(root):raise RuntimeError('后台启动期间已请求中断，未开始游戏操作')
+                state['state']='running';save(directory/'server.json',state)
+                print(json.dumps({'phase':'good_ready','backend':'GOODScanner','message':'包内 GOODScanner 已就绪；扫描、穿戴与强化使用统一后台'},ensure_ascii=False),flush=True)
+                return client
+            if process.poll() is not None:break
+            time.sleep(.25)
+        raise RuntimeError('GOODScanner 启动失败，请查看 runtime/goodscanner/instances 下的 server.log')
+    except Exception as exc:
+        # Popen owns this exact process handle, even if saving its state failed.
+        # Never leave it running after returning a failed/cancelled launch.
+        try:
+            shutdown.touch()
+            try:process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill();process.wait(timeout=2)
+            if process.poll() is None:raise RuntimeError('后台退出信号尚未确认')
+        except Exception as cleanup:
+            try:(runtime/'stop.signal').touch()
+            except Exception as marker:add_failure_note(exc,'无法保存中断标记：'+str(marker))
+            add_failure_note(exc,'后台启动失败且退出未确认，请关闭此工坊后重试：'+str(cleanup))
+            raise exc from cleanup
+        state['state']='failed'
+        try:save(directory/'server.json',state)
+        except Exception as persistence:add_failure_note(exc,'后台已退出，但无法保存失败状态：'+str(persistence))
+        raise
 
 
 def scan_inventory(scope='all'):
@@ -404,43 +490,23 @@ def apply_loadouts(library_path,ids,scan,updates=None,policy='strict',*,full_aud
     directory=ROOT/'runtime'/datetime.now().strftime('equip-good-%Y%m%d-%H%M%S-%f');directory.mkdir(parents=True)
     save(directory/'plan.json',plan)
     result={'status':'running','backend':'GOODScanner','directory':str(directory),'inventory_source':str(scan),'loadouts':[]}
-    def record():
-        save(directory/'result.json',result);save(ROOT/'runtime/active-equip.json',result)
-    record()
-    try:
-        client=ensure_backend()
-        if client.request('GET','/workbench').get('inlineEquipVerification') is not True:
-            raise RuntimeError('当前后台尚不支持逐件换装回执，请更新配套后台；没有回退到三遍检查，也没有发送换装操作。')
-        for row in plan['loadouts']:
-            if row['status']!='ready':continue
-            import re
-            if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',row['id']):raise ValueError('配装 ID 无效')
-            entry=library['loadouts'][row['id']][-1]
-            owner=character_key(entry.get('character_aliases',[entry['character']]))
-            targets=[lookup[r['artifact_id']] for r in row['items']]
-            if len(targets)!=5 or len({a.slot for a in targets})!=5:raise ValueError('需要完整五件配装')
-            payload={'equip':[{'artifact':good_artifact(a),'location':owner} for a in targets],
-                     'allowBorrow':entry.get('equipment_policy')=='borrow'}
-            pending=directory/'equip-pending.json';save(pending,{'loadout':row['id'],'payload':payload,'phase':'submitting'})
-            job_id,applied=client.run('/equip',payload,directory/row['id']/'apply','equip')
-            save(pending,{'loadout':row['id'],'payload':payload,'phase':'awaiting_inline_receipts','job_id':job_id})
-            receipts=[read(p) for p in (Path(client.state['directory'])/'receipts').glob('verify-*.json')]
-            receipts=validate_receipts(receipts,payload,job_id,owner)
-            save(directory/row['id']/'verification-receipts.json',receipts)
-            if full_audit:
-                audit_id,_=client.run('/equip',payload|{'verifyOnly':True},directory/row['id']/'audit','audit')
-                audit_receipts=[read(p) for p in (Path(client.state['directory'])/'receipts').glob('verify-*.json')]
-                save(directory/row['id']/'audit-receipts.json',validate_receipts(audit_receipts,payload,audit_id,owner))
-            statuses={r['id']:r['status'] for r in applied['results']}
-            refs={r['attributes']['slot']:r for r in entry['items']}
-            items=[{'slot':a.slot,'name':refs[a.slot]['name'],'status':'equipped' if statuses[f'equip:{i}']=='success' else 'already_correct',
-                    'attributes':refs[a.slot]['attributes']} for i,a in enumerate(targets)]
-            verified=[{'slot':a.slot,'fingerprint':fingerprint(a),'owner':entry['character']+'已装备','backend':'GOODScanner'} for a in targets]
-            result['loadouts'].append({'id':row['id'],'character':entry['character'],'items':items,'verified':verified})
-            pending.unlink();record()
-        result['status']='verified'
+    queue=[]
+    import re
+    for row in plan['loadouts']:
+        if row['status']!='ready':continue
+        if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',row['id']):raise ValueError('配装 ID 无效')
+        entry=library['loadouts'][row['id']][-1]
+        owner=character_key(entry.get('character_aliases',[entry['character']]))
+        targets=[lookup[r['artifact_id']] for r in row['items']]
+        if len(targets)!=5 or len({a.slot for a in targets})!=5:raise ValueError('需要完整五件配装')
+        queue.append({'id':row['id'],'character':entry['character'],'entry':entry,
+            'payload':{'equip':[{'artifact':good_artifact(a),'location':owner} for a in targets],
+                       'allowBorrow':entry.get('equipment_policy')=='borrow'}})
+    save(directory/'equipment-queue.json',queue)
+    save(directory/'result.json',result);save(ROOT/'runtime/active-equip.json',result)
+    from .equipment_recovery import execute_queue
+    try:return execute_queue(directory,result,queue,ensure_backend(),full_audit=full_audit)
     except Exception as exc:
-        result.update(status='needs-attention',error=str(exc));raise
-    finally:record()
-    print(json.dumps({'backend':'GOODScanner','status':'verified','characters':len(result['loadouts'])}),flush=True)
-    return result
+        result.update(status='needs-attention',error=str(exc))
+        save(directory/'result.json',result);save(ROOT/'runtime/active-equip.json',result)
+        raise

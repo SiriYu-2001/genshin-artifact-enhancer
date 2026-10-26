@@ -454,9 +454,21 @@ fn save(path:&Path,value:&Value)->Result<()> {
     // until the new data has been flushed, then use ReplaceFileW via rename API.
     #[cfg(windows)] {
         use std::os::windows::ffi::OsStrExt;
-        let a:Vec<u16>=tmp.as_os_str().encode_wide().chain(Some(0)).collect();
-        let b:Vec<u16>=path.as_os_str().encode_wide().chain(Some(0)).collect();
-        ensure!(unsafe {windows_sys::Win32::Storage::FileSystem::MoveFileExW(a.as_ptr(),b.as_ptr(),0x1|0x8)}!=0,"Atomic evidence write failed");
+        // canonicalize uses Windows verbatim paths (\\?\), including for relative
+        // failure paths whose resolved length exceeds MAX_PATH.
+        let source=std::fs::canonicalize(&tmp)?;
+        let destination=std::fs::canonicalize(path.parent().unwrap_or(Path::new(".")))?
+            .join(path.file_name().context("Evidence filename missing")?);
+        let a:Vec<u16>=source.as_os_str().encode_wide().chain(Some(0)).collect();
+        let b:Vec<u16>=destination.as_os_str().encode_wide().chain(Some(0)).collect();
+        for attempt in 0..4 {
+            if unsafe {windows_sys::Win32::Storage::FileSystem::MoveFileExW(a.as_ptr(),b.as_ptr(),0x1|0x8)}!=0 {break;}
+            let error=std::io::Error::last_os_error();
+            if attempt==3 || !matches!(error.raw_os_error(),Some(32)|Some(33)) {
+                return Err(error).with_context(||format!("Atomic evidence write failed: {}",path.display()));
+            }
+            std::thread::sleep(Duration::from_millis(25*(attempt+1)));
+        }
     }
     #[cfg(not(windows))] std::fs::rename(tmp,path)?;
     Ok(())
@@ -477,7 +489,13 @@ fn open_target(ctrl:&mut GenshinGameController,manager:&ArtifactManager,r:&Reque
                 if let Ok(artifact)=serde_json::from_value::<GoodArtifact>(binding["artifact"].clone()) {
                     if same_identity(&artifact,&r.artifact) && binding["name"]==r.name {
                         if let Ok(current)=observe_frame(&ctrl.capture_game()?,ocr,r) {
-                            if matches_observation(&current,&r.artifact) && current.material_count==0 {return Ok((current,artifact));}
+                            if matches_observation(&current,&r.artifact) {
+                                if current.material_count==0 {return Ok((current,artifact));}
+                                // A previously rejected stage selection has no pending
+                                // consuming operation (checked by execute_inner). Leave
+                                // it without confirming, then locate the bound target.
+                                ctrl.click_at(1840.0,48.0);yas::utils::sleep(350);
+                            }
                         }
                     }
                 }
@@ -611,7 +629,17 @@ pub fn visible_materials(frame:&RgbImage,n:u32)->Result<Vec<u32>> {
         // A cup's gold ornament may extend into the crop above the stars.
         // Remove only a tiny band separated by an entirely empty row. Nothing
         // beside, inside or below the star row may be discarded as decoration.
-        let cut=if peak_pixels>=30 && prefix>0 && prefix<=24 && prefix_height<=3 {top as u32}else{0};
+        let mut cut=if peak_pixels>=30 && prefix>0 && prefix<=24 && prefix_height<=3 {top as u32}else{0};
+        // Star tips sit five rows above their widest crossbar. A small icon
+        // tail can touch a tip, so an empty separating row is not guaranteed.
+        // Remove only <=24 pixels ABOVE that band. Preserve every horizontal
+        // pixel in the star band, including a fifth/partial extra star.
+        let raw_height=rows.iter().position(|&n|n>0).zip(rows.iter().rposition(|&n|n>0)).map(|(a,b)|b-a+1).unwrap_or(0);
+        if cut==0 && raw_height>18 && (9..=10).contains(&peak) && peak_pixels>=30 {
+            let band_top=peak-5;
+            let extra:usize=rows[..band_top].iter().sum();
+            if extra>0 && extra<=24 {cut=band_top as u32;}
+        }
         let mut xs=Vec::new();let mut ys=Vec::new();let mut pixels=0;
         for (x,y,p) in im.enumerate_pixels(){
             // Gold star pixels, not the brown five-star card background.
@@ -672,7 +700,9 @@ fn wait_staged(ctrl:&GenshinGameController,ocr:&dyn ImageToText<RgbImage>,r:&Req
         yas::utils::sleep(120);
     }
     let dir=Path::new("failures").join(format!("enhance-{}",r.operation_id));std::fs::create_dir_all(&dir)?;
-    save(&dir.join("stage-observations.json"),&json!({"before":before,"observations":observations,"error":last,"confirmationSent":false}))?;
+    if let Err(error)=save(&dir.join("stage-observations.json"),&json!({"before":before,"observations":observations,"error":last,"confirmationSent":false})) {
+        bail!("{last}; no confirmation sent; diagnostic persistence failed: {error:#}");
+    }
     bail!("{last}; no confirmation sent; stage-add was sent once")
 }
 fn progressed(before:&Observation,after:&Observation)->bool {
@@ -789,6 +819,26 @@ mod stage_tests {
         let mut frame=material_fixture(4,true);
         for x in 5..9{for y in 906..913{frame.put_pixel(1177+x,y,image::Rgb([255,210,40]));}}
         assert!(visible_materials(&frame,1).is_err());
+    }
+    #[test] fn connected_icon_tail_keeps_four_star_band_and_rejects_fifth_star(){
+        for stars in [4,5] {
+            let mut frame=material_fixture(stars,false);
+            for y in 898..903 {for x in 1241..1243 {frame.put_pixel(x,y,image::Rgb([255,210,40]));}}
+            if stars==4 {assert_eq!(visible_materials(&frame,1).unwrap(),vec![4]);}
+            else {assert!(visible_materials(&frame,1).is_err());}
+        }
+    }
+    #[cfg(windows)]
+    #[test] fn evidence_replaces_existing_files_beyond_windows_max_path(){
+        let root=std::env::temp_dir().join(format!("workbench-evidence-{}",uuid::Uuid::new_v4()));
+        let deep=root.join("nested-evidence-".repeat(7)).join("nested-evidence-".repeat(7));
+        std::fs::create_dir_all(&deep).unwrap();let path=deep.join("stage-observations.json");
+        assert!(path.as_os_str().len()>260);
+        save(&path,&json!({"value":1})).unwrap();save(&path,&json!({"value":2})).unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&std::fs::read(&path).unwrap()).unwrap()["value"],2);
+        let canonical=std::fs::canonicalize(&root).unwrap();
+        assert!(canonical.starts_with(std::fs::canonicalize(std::env::temp_dir()).unwrap()));
+        std::fs::remove_dir_all(canonical).unwrap();
     }
     #[test] fn numeric_bounds_keep_internal_decimal_pixels_and_exclude_exterior_particles(){
         let mut frame=RgbImage::new(1920,1080);let white=image::Rgb([255,255,255]);

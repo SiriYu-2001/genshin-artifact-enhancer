@@ -102,7 +102,7 @@ def write_results(batch, original, inventory, profile, names, decisions):
     changed=[a for a in inventory if a.level!=before[a.id].level or a.stats!=before[a.id].stats]
     items=[{'id':a.id,'name':names[a.id],'before_level':before[a.id].level,'after_level':a.level,
             'substats':[{'key':s.key,'value':float(s.value)} for s in a.stats]} for a in changed]
-    result={'status':batch['status'],'scores':scores,'items':items,
+    result={'status':batch['status'],'scores':scores,'items':items,'threshold':float(profile.threshold),
             'confirmations':len(receipts),'resource_accounting':False,
             'remaining_eligible':[d for d in decisions if d['action'] in ('enhance','inspect')],
             'deferred':[d for d in decisions if d['action'] in ('reread','unsupported')]}

@@ -61,7 +61,11 @@ class RecoveryTests(unittest.TestCase):
         import itertools,uuid
         with TemporaryDirectory() as tmp:
             root=Path(tmp);(root/'runtime').mkdir();job=str(uuid.uuid4())
-            client=good.GoodClient({'endpoint':'http://127.0.0.1:19265','token':'test','directory':str(root)},root)
+            state={'endpoint':'http://127.0.0.1:19265','token':'test','directory':str(root/'runtime/goodscanner/instances/test'),
+                   'instance':'test','pid':123,'exe_path':str(root/'bin/goodscanner/workbench_goodscanner.exe')}
+            Path(state['directory']).mkdir(parents=True)
+            good.save(root/'runtime/goodscanner/server.json',state)
+            client=good.GoodClient(state,root)
             def request(method,path,*args):
                 if path=='/workbench':return {'window':{'found':True,'width':1920,'height':1080}}
                 if path=='/scan':return {'jobId':job}
@@ -70,7 +74,7 @@ class RecoveryTests(unittest.TestCase):
             client.request=Mock(side_effect=request);clock=itertools.count(0,10)
             with patch.object(good.time,'monotonic',side_effect=lambda:next(clock)),patch.object(good.time,'sleep'),patch.object(good,'stop_owned_backend') as shutdown:
                 with self.assertRaisesRegex(RuntimeError,'90 秒'):client.run('/scan',{},root/'job','scan')
-            shutdown.assert_called_once_with(root)
+            shutdown.assert_called_once_with(root,expected_state=state)
             self.assertTrue((root/'runtime/stop.signal').exists())
             self.assertTrue((root/'job/stalled.json').exists())
 

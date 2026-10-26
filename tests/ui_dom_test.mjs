@@ -211,5 +211,16 @@ assert.equal($('inventory-import').disabled,true);assert.ok($('run-title').textC
 currentState={...currentState,busy:false,stopping:false,can_stop:false,job:{...currentState.job,status:'stopped',finished:Date.now()/1000}};
 await new Promise(r=>setTimeout(r,1750));
 assert.equal($('inventory-import').disabled,false);assert.equal($('start').disabled,false);assert.ok($('run-detail').textContent.includes('扫描不能续扫'));
+currentState={busy:false,can_resume:false,needs_reconciliation:false,timings:[],equipment_recovery:{available:true,characters:['测试角色'],hint:'只重试穿戴'},job:{id:'equip-failed',kind:'start',status:'stopped',logs:[],started:Date.now()/1000,result:{error:'禁止借用',scores:{borrow:{before:10,after:11,gain:1}},review_items:[{name:'<script>花</script>',code:'probability_boundary',reason:'概率跨过阈值',suggestion:'保留该物品',probability_lower:.049,probability_upper:.051,threshold:.05}]}}};
+await new Promise(r=>setTimeout(r,1750));
+assert.equal($('equipment-recovery').hidden,false);assert.equal($('retry-equip').disabled,false);
+assert.equal($('resume').disabled,true);assert.ok(!$('run-detail').textContent.includes('扫描不能续扫'));
+assert.ok($('results').textContent.includes('4.90%–5.10%'));assert.ok($('results').textContent.includes('5.00%'));
+assert.ok($('results').textContent.includes('禁止借用'));assert.equal($('results').querySelector('script'),null);
+$('retry-equip-borrow').checked=true;$('retry-equip').click();await tick();await tick();
+assert.ok(requests.some(r=>r.url==='/api/jobs'&&r.body.kind==='retry-equip'&&r.body.allow_borrow===true));
+assert.equal($('retry-equip-borrow').checked,false);
+currentState={...currentState,needs_reconciliation:true};await new Promise(r=>setTimeout(r,1750));
+assert.equal($('retry-equip').disabled,true);assert.equal($('resume').textContent,'核对上次结果');
 await window.ArtifactWorkbench.flushDraft();window.ArtifactWorkbench.dispose();dom.window.close();
 console.log('DOM checks passed: 112 existing controls, guide navigation, accessible state, CSS parsing, advanced validation, saved settings, recommendation rendering and metadata editing. No game job launched.');

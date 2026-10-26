@@ -115,6 +115,7 @@ def report(state,current):
     demands=[{k:r[k] for k in ('id','character','name','status','score','independent_score','items','eligible_count','deferred','bootstrap','artifact_energy_recharge_min','artifact_energy_recharge_total') if k in r}
              for r in current['demands']]
     for row in demands:
+        row['threshold']=next(r['effective_profile']['threshold'] for r in current['demands'] if r['id']==row['id'])
         row['before']=initial[row['id']]['score']
         row['gain']=row['score']-row['before'] if row['score'] is not None and row['before'] is not None else None
     result={'kind':'campaign','status':state['status'],'equipment':current['equipment'],'allocation':current['allocation'],

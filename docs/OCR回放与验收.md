@@ -11,6 +11,8 @@
 ## 工具
 
 - `tools/replay_enhancement.py`：调用生产原生解析器；比较已标注字段，核对材料星级，并检查已有成功样本不退化。
+- 默认按正式验收执行：所有样本必须明确标注 `required: true`。未标注的诊断样本要显式传 `--exploratory`；这类运行的 `acceptance_passed` 始终为 `false`，即使命令成功退出。空样本集不能通过。
+- 超时、程序启动失败或返回无效 JSON 单列为 `infrastructure_failed`，不能当作预期 OCR 拒绝。正式验收同时检查命令退出码与 `summary.acceptance_passed`，不能仅依据“回放完成”。
 - 后台 `--replay-regions FRAME REGIONS_JSON MODEL`：输出指定裁切的原图和放大图读数；用于确认是裁切还是字段解析问题。
 - 后台 `--replay-corpus JOBS_JSONL MODEL`：复用同一个包内模型批量回放，逐图输出结果，不创建游戏控制器。每行提供 `frame` 以及 `regions`、`request` 或 `kind: "filter"`。
 - `tools/replay_equipment_ocr.py` 是旧 yas 配装布局回放；GOODScanner 配装解析应使用后台 `--replay-selection`，两者不要混作同一套验收。

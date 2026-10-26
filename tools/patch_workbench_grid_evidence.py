@@ -70,4 +70,7 @@ def main():
     }
     #[test] fn full_inventory_keeps_count_audit_and_fast_traversal(){''')
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    main()
+    import runpy
+    runpy.run_path(str(Path(__file__).with_name('patch_workbench_equipment_recovery.py')),run_name='__main__')

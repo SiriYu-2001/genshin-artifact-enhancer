@@ -12,7 +12,7 @@ from .ui_config import materialize_snapshot,validate
 def _main():
     request=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
     output=Path(request['output']);kind=request['kind']
-    job_started=time.time();data=None
+    job_started=time.time();data=None;result=None
     try:
         if kind=='scan':
             from .workflow import fresh_scan
@@ -30,6 +30,9 @@ def _main():
                 from .finish_equip import apply_finished
                 result['equipment']=apply_finished(state,json.loads(policy.read_text(encoding='utf-8')).get('scene'))
                 save(policy,{'enabled':False,'status':'verified'})
+        elif kind=='retry-equip':
+            from .equipment_recovery import retry_equipment
+            result=retry_equipment(allow_borrow=request.get('allow_borrow',False))
         elif kind=='backend-check':
             from .good_backend import ensure_backend,REVISION
             client=ensure_backend()
@@ -77,9 +80,11 @@ def _main():
                 result={'status':state['status'],'directory':state['directory'],
                         'report':json.loads((Path(state['directory'])/'summary.json').read_text(encoding='utf-8'))}
                 if data.get('auto_equip_after') and state['status'] in ('finished','finished-with-deferred'):
+                    save(Path(state['directory'])/'auto-equip-policy.json',{'enabled':True,'scene':data.get('equip_scene')})
                     print(json.dumps({'phase':'equipping_final_builds'}),flush=True)
                     from .finish_equip import apply_finished
                     result['equipment']=apply_finished(state,data.get('equip_scene'))
+                    save(Path(state['directory'])/'auto-equip-policy.json',{'enabled':False,'status':'verified'})
             else:raise ValueError('Unknown UI operation')
         save(output,result)
     except Exception as exc:
@@ -93,13 +98,21 @@ def _main():
                 if kind=='start' and data and data.get('auto_equip_after') and state.get('started',0)>=job_started:
                     save(Path(state['directory'])/'auto-equip-policy.json',{'enabled':True,'scene':data.get('equip_scene')})
         from .job_control import stop_requested
-        save(output,{'status':'stopped' if stop_requested(ROOT) else 'failed','error':str(exc)})
+        failure=dict(result or {})
+        equipment_path=ROOT/'runtime/active-equip.json'
+        if kind in ('start','resume','equip','retry-equip') and equipment_path.exists() and equipment_path.stat().st_mtime>=job_started:
+            equipment=json.loads(equipment_path.read_text(encoding='utf-8'))
+            if equipment.get('loadouts'):
+                if 'report' in failure:failure['equipment']=equipment
+                else:failure['loadouts']=equipment['loadouts']
+        failure.update(status='stopped' if stop_requested(ROOT) else 'failed',error=str(exc))
+        save(output,failure)
         raise
 
 
 def main():
     request=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
-    if request['kind'] not in ('scan','start','resume','equip','backend-check','reconcile'):
+    if request['kind'] not in ('scan','start','resume','equip','retry-equip','backend-check','reconcile'):
         return _main()
     from .game_lease import GameLease
     try:

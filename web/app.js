@@ -159,12 +159,14 @@ function renderResults(result){
   if(result.backend==='GOODScanner'&&result.health){$('results').className='panel';$('results').textContent=`GOODScanner 已连接 · ${result.health.gameAlive?'检测到游戏窗口':'游戏未运行（连接检查仍有效）'} · 本次没有游戏输入。`;return;}
   const rows=result.demands;
   let html='';
-  if(rows){html=rows.map(r=>`<article class="panel result-card"><div class="panel-heading"><div><h2>${esc(r.name||r.character)}</h2><p class="small muted">${esc(r.id)} · ${r.status==='ready'?'完整配装':r.status==='bootstrap'?'建立起始套装':'暂无可行组合'}</p></div><div class="score">${r.score==null?'—':r.score.toFixed(4)} <small>分</small></div></div><div class="result-meta"><span>待处理候选 ${r.eligible_count??0}</span>${r.artifact_energy_recharge_total!=null?`<span>额外充能 ${r.artifact_energy_recharge_total.toFixed(1)}% / ≥${r.artifact_energy_recharge_min??0}%</span>`:""}<span>待确认 ${r.deferred_count??0}</span><span>独立上限 ${r.independent_score?.toFixed(4)??'—'}</span>${r.gain!=null?`<span>变化 ${r.gain>=0?'+':''}${r.gain.toFixed(4)}</span>`:''}</div>${r.bootstrap?`<p class="notice">起始套装预计得分 ${r.bootstrap.expected_score_lower_model.toFixed(3)}；充能达标概率估计 ${(r.bootstrap.feasibility_probability_estimate*100).toFixed(1)}%。${r.bootstrap.samples} 次模拟，${r.bootstrap.search_limited?'已达搜索上限，仅为当前找到的最佳方案':'已完成采样目标的组合搜索'}。先培养这套起点，形成满级基准后再使用概率阈值。</p>`:''}${itemTable(r.items||[])}</article>`).join('');
+  if(rows){html=rows.map(r=>`<article class="panel result-card"><div class="panel-heading"><div><h2>${esc(r.name||r.character)}</h2><p class="small muted">${esc(r.id)} · ${r.status==='ready'?'完整配装':r.status==='bootstrap'?'建立起始套装':'暂无可行组合'}</p></div><div class="score">${r.score==null?'—':r.score.toFixed(4)} <small>分</small></div></div><div class="result-meta"><span>达标候选 ${r.eligible_count??0}</span>${r.artifact_energy_recharge_total!=null?`<span>额外充能 ${r.artifact_energy_recharge_total.toFixed(1)}% / ≥${r.artifact_energy_recharge_min??0}%</span>`:""}<span>暂缓候选 ${r.deferred_count??0}</span><span>独立上限 ${r.independent_score?.toFixed(4)??'—'}</span>${r.gain!=null?`<span>变化 ${r.gain>=0?'+':''}${r.gain.toFixed(4)}</span>`:''}</div>${r.bootstrap?`<p class="notice">起始套装预计得分 ${r.bootstrap.expected_score_lower_model.toFixed(3)}；充能达标概率估计 ${(r.bootstrap.feasibility_probability_estimate*100).toFixed(1)}%。${r.bootstrap.samples} 次模拟，${r.bootstrap.search_limited?'已达搜索上限，仅为当前找到的最佳方案':'已完成采样目标的组合搜索'}。先培养这套起点，形成满级基准后再使用概率阈值。</p>`:''}${itemTable(r.items||[])}</article>`).join('');
     if(result.transfers?.length)html+=`<div class="panel"><h3>让装关系</h3>${result.transfers.map(t=>`<p class="small">${esc(t.from_character)}${t.outside_list?'（名单外）':''} → ${esc(t.to_demand)}：${esc(t.name)}</p>`).join('')}</div>`;
     if(result.conflicts?.length)html+=`<p class="warning">${result.conflicts.length} 件装备存在同时使用冲突。</p>`;
-  }else if(result.scores){html=`<article class="panel"><h2>强化前后</h2><div class="table-wrap"><table class="score-table"><thead><tr><th>模式</th><th>起点</th><th>当前</th><th>提升</th></tr></thead><tbody>${Object.entries(result.scores).map(([k,s])=>`<tr><td>${k==='borrow'?'允许借用':'不借用'}</td><td>${s.before?.toFixed(4)??'—'}</td><td>${s.after?.toFixed(4)??'—'}</td><td>${s.gain?.toFixed(4)??'—'}</td></tr>`).join('')}</tbody></table></div><p class="small muted">达标候选 ${result.remaining_count??0} · 待确认 ${result.deferred_count??0} · 强化确认 ${result.confirmations??0} 次</p></article>`;
+  }else if(result.scores){html=`<article class="panel"><h2>强化前后</h2><div class="table-wrap"><table class="score-table"><thead><tr><th>模式</th><th>起点</th><th>当前</th><th>提升</th></tr></thead><tbody>${Object.entries(result.scores).map(([k,s])=>`<tr><td>${k==='borrow'?'允许借用':'不借用'}</td><td>${s.before?.toFixed(4)??'—'}</td><td>${s.after?.toFixed(4)??'—'}</td><td>${s.gain?.toFixed(4)??'—'}</td></tr>`).join('')}</tbody></table></div><p class="small muted">达标候选 ${result.remaining_count??0} · 暂缓候选 ${result.deferred_count??0} · 强化确认 ${result.confirmations??0} 次</p></article>`;
   }else if(result.scan_directory){html='<div class="panel"><h2>扫描完成</h2><p class="muted">库存已保存，可以回到配置页预览或复用本次扫描。</p></div>';
   }else if(result.error){html=`<div class="panel"><h2>需要处理</h2><p class="warning">${esc(result.error)}</p></div>`;}
+  if(result.error&&!html.includes('需要处理'))html+=`<article class="panel"><h2>需要处理</h2><p class="warning">${esc(result.error)}</p></article>`;
+  if(result.review_items?.length)html+=`<article class="panel"><h2>暂缓的候选与未配齐的需求</h2><p class="small muted">这不是“强化结果待核对”：以下项目没有被强制强化，也不阻止已可行配装的穿戴。</p>${result.review_items.map(r=>`<div class="result-card"><h3>${esc(r.demand? r.demand+' · ':'')}${esc(r.name)}${r.level!=null?' · +'+r.level:''}</h3><p>${esc(r.reason)}</p>${r.probability_lower!=null?`<p>提升概率 ${(r.probability_lower*100).toFixed(2)}%–${(r.probability_upper*100).toFixed(2)}%${r.threshold!=null?' · 阈值 '+(r.threshold*100).toFixed(2)+'%':''}</p>`:''}<p class="small muted">${esc(r.suggestion)}</p></div>`).join('')}<div class="button-row"><button class="btn" data-go="configure">调整角色配置</button><button class="btn" data-go="inventory">更新库存</button></div></article>`;
   if(result.equipment?.length)html+=result.equipment.map(r=>`<article class="panel result-card"><h2>${esc(r.character)} · 穿戴核验</h2><p class="small muted">已核验 ${r.verified_slots}/5 部位 · 实际变更 ${r.changed} 件</p>${r.items.map(a=>`<p class="small">${SLOT[a.slot]} · ${esc(a.name)} · ${a.status==='equipped'?'已穿戴':'原本正确'}</p>`).join('')}</article>`).join('');
   if(html){$('results').className='';$('results').innerHTML=(result.snapshot?.ownership_stale?'<div class="panel note-panel"><p class="warning">这是历史快照计算结果。快照之后发生过换装，表中的装备者与让装关系可能已变化；不借用规划需要新的归属数据。</p></div>':'')+html;}
 }
@@ -175,6 +177,8 @@ async function refreshState(){
     $('connection-dot').className='online';$('connection').textContent=busy?'本地任务运行中':'本地服务已连接';
     for(const id of ['scan-only','preview','start','equip-loadouts','elixir-calculate'])$(id).disabled=busy;
     window.__needsReconciliation=state.needs_reconciliation;$('resume').textContent=state.needs_reconciliation?'核对上次结果':'继续上次进度';$('resume').disabled=busy||!(state.can_resume||state.needs_reconciliation);$('stop').disabled=!(state.can_stop??(busy||state.unfinished_batch));
+    $('equipment-recovery').hidden=!state.equipment_recovery;$('retry-equip').disabled=busy||!!state.needs_reconciliation||!!state.unfinished_batch;$('retry-equip-borrow').disabled=busy;
+    if(state.equipment_recovery)$('equipment-recovery-detail').textContent=(state.equipment_recovery.characters||[]).join('、')+'。'+state.equipment_recovery.hint;
     const job=state.job;activeElixirJob=busy&&job?.kind==='elixir'?job.id:null;$('elixir-stop').hidden=!activeElixirJob;if(!job)return;
     document.querySelector('.steps').hidden=['elixir','dust'].includes(job.kind);
     if(job.kind==='elixir'){
@@ -182,14 +186,14 @@ async function refreshState(){
       for(const line of [...job.logs].reverse()){try{const x=JSON.parse(line);if(x.phase==='longterm'){detail=`长期对照：已模拟 ${x.done}/${x.total} 条未来路径`;break;}if(x.phase==='elixir'){detail=`${x.character}：已枚举 ${x.done}/${x.total} 种单次选择`;break;}if(x.phase==='elixir_pairs'){detail='正在联合比较两次定制候选…';break;}}catch{}}
       $('elixir-status').textContent=job.status==='running'?detail:job.status==='completed'?'建议已计算并保存，可切换优先目标查看。':job.status==='stopped'?'本次计算已停止，设置已保留。':job.result?.error||'计算失败，请查看运行日志。';
     }
-    const labels={running:'任务正在运行',completed:'任务完成',deferred:'已结束，有待处理项',failed:'任务已停止，需要处理',stopped:'本轮已结束，进度已保存'};
-    const kind={preview:'离线配装计算',scan:'扫描库存',reconcile:'核对上次结果',start:'序贯强化',resume:'继续强化',equip:'保存配装穿戴',elixir:'祝圣之霜建议',dust:'启圣之尘建议'};
+    const labels={running:'任务正在运行',completed:'任务完成',deferred:'强化已结束，部分候选暂缓',failed:'任务已停止，需要处理',stopped:'本轮已结束，进度已保存'};
+    const kind={preview:'离线配装计算',scan:'扫描库存',reconcile:'核对上次结果',start:'序贯强化',resume:'继续强化',equip:'保存配装穿戴','retry-equip':'恢复穿戴',elixir:'祝圣之霜建议',dust:'启圣之尘建议'};
     $('run-title').textContent=state.stopping?'正在停止输入并退出后台':labels[job.status]||job.status;$('run-dot').className='status-dot '+job.status;
     const sec=Math.floor(((job.finished||Date.now()/1000)-job.started));$('elapsed').textContent=`${kind[job.kind]} · ${Math.floor(sec/60)}分${sec%60}秒`;
-    $('run-detail').textContent=job.status==='running'?detailFromLogs(job.logs):job.status==='failed'?(job.result?.error||'请展开日志查看原因。未确认的操作不会自动重复提交。'):job.status==='deferred'?'可处理候选已结束，仍有概率边界或缺少基准的需求。':job.status==='stopped'?'可以开始其他任务，也可以选择继续上次进度。':'结果与记录已保存到本机。';
+    $('run-detail').textContent=job.status==='running'?detailFromLogs(job.logs):job.status==='failed'?(job.result?.error||'请展开日志查看原因。未确认的操作不会自动重复提交。'):job.status==='deferred'?'达标候选已处理完。暂缓原因和处理建议见下方明细，不需要强行确认。':job.status==='stopped'?'可以开始其他任务，也可以选择继续上次进度。':'结果与记录已保存到本机。';
     if(state.stopping)$('run-detail').textContent='正在确认工作进程和游戏后台退出。完成后可以导入库存或开始新任务。';
     else if(state.stop_error)$('run-detail').textContent='停止未完成：'+state.stop_error;
-    else if(job.status==='stopped')$('run-detail').textContent=state.can_resume?'已停止，可以继续上次强化或开始其他任务。':'已停止。扫描不能续扫，请回到“库存导入”重新扫描或导入 JSON。';
+    else if(job.status==='stopped')$('run-detail').textContent=state.equipment_recovery?'强化进度已保留，可使用下方入口恢复穿戴。':state.can_resume?'已停止，可以继续上次强化或开始其他任务。':job.kind==='scan'?'已停止。扫描不能续扫，请回到“库存导入”重新扫描或导入 JSON。':'本轮已结束，已完成的进度保留；可以开始其他任务。';
     $('run-progress').hidden=!busy;$('logs').textContent=job.logs.join('\n')||'等待脚本输出…';
     $('save-loadouts').disabled=busy||!job.result?.demands||!['completed','deferred'].includes(job.status);
     const stamp=JSON.stringify(job.result);if(stamp!==renderStamp){renderStamp=stamp;renderResults(job.kind==='elixir'&&job.result?.kind==='elixir'?{...job.result,calculated_at:job.finished}:job.result);}
@@ -203,6 +207,7 @@ async function launch(kind,scope="current"){
   const data={kind};if(['start','preview'].includes(kind))data.config_id=await saveCurrent();
   if(['start','preview','equip'].includes(kind))data.snapshot_id=$('snapshot').value;
   if(kind==='start')data.fresh=$('fresh-scan').checked;if(kind==='scan'||kind==='start')data.scope=scope;
+  if(kind==='retry-equip'){data.allow_borrow=$('retry-equip-borrow').checked;$('retry-equip-borrow').checked=false;}
   if(kind==='equip')data.ids=[...document.querySelectorAll('.loadout-check:checked')].map(x=>x.value);
   await api('/api/jobs',data);renderStamp='';latestResult=null;$('results').className='empty-state';$('results').innerHTML='<h3>正在准备本次任务</h3><p>结果由实际库存计算，不使用示例数据。</p>';showPage('run');await refreshState();
 }
@@ -256,6 +261,7 @@ function events(){
   $('import-config').onclick=()=>$('import-file').click();$('import-file').onchange=protect(async e=>{const file=e.target.files[0];if(!file)return;const data=importDraft(JSON.parse(await file.text()));const saved=await api('/api/config',{config:data});draft=saved.config;configId=saved.id;active=0;renderDraft();persist();catalog=await api('/api/catalog');renderCatalog();notify('配置已导入');e.target.value='';});
   for(const [id,kind] of [['check-backend','backend-check'],['preview','preview'],['start','start'],['resume','resume'],['equip-loadouts','equip']])$(id).onclick=protect(()=>launch(kind));
   $('emergency-stop').onclick=protect(async()=>{await api('/api/emergency-stop',{});notify('已发出中断请求，正在确认后台退出');await refreshState();});
+  $('retry-equip').onclick=protect(()=>launch('retry-equip'));
   $('resume').onclick=protect(()=>launch(window.__needsReconciliation?'reconcile':'resume'));$('stop').onclick=protect(async()=>{await api('/api/stop',{});notify('正在结束本轮；已完成的进度会保留');await refreshState();});
   $('save-loadouts').onclick=protect(async()=>{await api('/api/save-loadouts',{});catalog=await api('/api/catalog');renderCatalog();notify('五件配装已保存到本地库');});
   $('download-result').onclick=()=>latestResult&&download(latestResult,'圣遗物配装结果');

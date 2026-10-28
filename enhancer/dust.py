@@ -76,7 +76,7 @@ class DustAdvisor:
         if not complements['lo'].points:raise ValueError('该物品无法组成满足约束的4+1配装')
         best_hit=max(self.profile.weight(k)*max(ROLLS[k])/MEANS[k] for k in keys)
         upper=max(sum(b.hi*self.profile.weight(k)/MEANS[k] for k,b in bases.items() if k!='critRate_')+
-                  (complements['hi'].query(bases.get('critRate_',Bounds(F(0),F(0))).hi,main_crit(artifact),
+                  (complements['hi'].query(bases.get('critRate_',Bounds(F(0),F(0))).hi+(n*max(ROLLS['critRate_']) if self.inventory.crit_floor and 'critRate_' in keys else F(0)),main_crit(artifact),
                      main_energy(artifact)+bases.get('enerRech_',Bounds(F(0),F(0))).hi+(n*max(ROLLS['enerRech_']) if 'enerRech_' in keys else F(0))) or F(0))+n*best_hit
                   for n,bases in hypotheses)
         pruned=upper<=self.inventory.baseline.lo

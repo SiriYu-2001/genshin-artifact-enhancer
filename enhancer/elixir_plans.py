@@ -46,9 +46,9 @@ def two_complements(inv,slots,bound):
             if slot in slots:continue
             bucket=inv.buckets[bound,slot,slot!=off]
             states=pareto((Point(a.crit+b.crit,a.other+b.other,(),a.main_crit+b.main_crit,a.energy+b.energy)
-                           for a in states for b in bucket),inv.cap,inv.energy_floor)
+                           for a in states for b in bucket),inv.cap,inv.energy_floor,inv.crit_floor)
         choices.extend(states)
-    return pareto(choices,inv.cap,inv.energy_floor)
+    return pareto(choices,inv.cap,inv.energy_floor,inv.crit_floor)
 
 
 def score(points,cr,other,main,inv,energy=None):
@@ -57,6 +57,7 @@ def score(points,cr,other,main,inv,energy=None):
         room=max(0,float(inv.cap-p.main_crit)-main)
         value=other+float(p.other)+float(inv.w)*np.minimum(cr+float(p.crit),room)
         if inv.energy_floor:value=np.where(energy+float(p.energy)>=float(inv.energy_floor)-1e-10,value,-np.inf)
+        if inv.crit_floor:value=np.where(cr+float(p.crit+p.main_crit)+main>=float(inv.crit_floor)-1e-10,value,-np.inf)
         best=np.maximum(best,value)
     return best
 

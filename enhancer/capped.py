@@ -1,5 +1,5 @@
 """4+1 optimization and joint roll probabilities with a whole-build CR score cap."""
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from fractions import Fraction as F
@@ -59,7 +59,9 @@ def components(artifact, profile, *, include_pending=True):
     return crit, other
 
 
-def pareto(points, cap, energy_floor=F(0)):
+def pareto(points, cap, energy_floor=F(0), crit_floor=F(0)):
+    # Retain CR above the scoring cap when it is needed by a hard minimum.
+    cap=max(cap,crit_floor)
     if energy_floor>0:
         # Three-dimensional skyline: score, capped CR, and required ER. Never
         # discard a lower-scoring item whose ER can make the whole set feasible.
@@ -102,10 +104,11 @@ def pareto(points, cap, energy_floor=F(0)):
 
 class FixedMainEnvelope:
     """Query best complement in O(log n), accounting for the candidate's CR."""
-    def __init__(self, points, cap, weight):
+    def __init__(self, points, cap, weight, crit_floor=F(0)):
         self.points = tuple(sorted(points, key=lambda p: p.crit))
         self.crits = tuple(p.crit for p in self.points)
         self.cap, self.weight = cap, weight
+        self.crit_floor=crit_floor
         self.prefix, self.suffix = [], [F(0)] * len(self.points)
         value = None
         for p in self.points:
@@ -115,24 +118,45 @@ class FixedMainEnvelope:
         for i in range(len(self.points) - 1, -1, -1):
             value = max(value, self.points[i].other) if value is not None else self.points[i].other
             self.suffix[i] = value
+        self.tree_size=1
+        while self.tree_size<len(self.points):self.tree_size*=2
+        self.tree=[None]*(2*self.tree_size)
+        for i,p in enumerate(self.points):self.tree[self.tree_size+i]=p.other+weight*p.crit
+        for i in range(self.tree_size-1,0,-1):
+            values=[v for v in self.tree[2*i:2*i+2] if v is not None]
+            self.tree[i]=max(values) if values else None
+
+    def range_max(self,left,right):
+        left+=self.tree_size;right+=self.tree_size;best=None
+        while left<right:
+            if left&1:
+                v=self.tree[left];best=v if best is None else max(best,v);left+=1
+            if right&1:
+                right-=1;v=self.tree[right];best=v if best is None else max(best,v)
+            left//=2;right//=2
+        return best
 
     @lru_cache(maxsize=4096)
     def query(self, candidate_cr):
         if not self.points:
             return None
         boundary = bisect_right(self.crits, self.cap - candidate_cr)
+        start=bisect_left(self.crits,self.crit_floor-candidate_cr)
         possibilities = []
-        if boundary:
-            possibilities.append(self.prefix[boundary - 1] + self.weight * candidate_cr)
-        if boundary < len(self.points):
-            possibilities.append(self.suffix[boundary] + self.weight * self.cap)
-        return max(possibilities)
+        if start<boundary:
+            value=self.prefix[boundary-1] if start==0 else self.range_max(start,boundary)
+            possibilities.append(value+self.weight*candidate_cr)
+        saturated=max(start,boundary)
+        if saturated < len(self.points):
+            possibilities.append(self.suffix[saturated] + self.weight * self.cap)
+        return max(possibilities) if possibilities else None
 
 
 class Envelope:
-    def __init__(self, points, cap, weight, energy_floor=F(0)):
+    def __init__(self, points, cap, weight, energy_floor=F(0), crit_floor=F(0)):
         self.points, self.cap, self.weight = points, cap, weight
         self.energy_floor=energy_floor
+        self.crit_floor=crit_floor
         self.groups = defaultdict(list)
         self.queries = {}
         for p in points:
@@ -144,7 +168,7 @@ class Envelope:
             required=max(F(0),self.energy_floor-candidate_energy)
             key = existing_main, candidate_main, required
             if key not in self.queries:
-                self.queries[key] = FixedMainEnvelope([p for p in points if p.energy>=required], max(F(0), self.cap - existing_main - candidate_main), self.weight)
+                self.queries[key] = FixedMainEnvelope([p for p in points if p.energy>=required], max(F(0), self.cap - existing_main - candidate_main), self.weight,max(F(0),self.crit_floor-existing_main-candidate_main))
             value=self.queries[key].query(candidate_cr)
             if value is not None:values.append(value)
         return max(values) if values else None
@@ -159,6 +183,8 @@ class CappedInventory:
             raise ValueError("Negative CR cap")
         self.w = profile.weight("critRate_") / MEANS["critRate_"]
         self.energy_floor=F(str(profile.data.get('artifact_energy_recharge_min',0)))
+        self.crit_floor=F(str(profile.data.get('artifact_crit_rate_min',0)))
+        if not 0<=self.crit_floor<=200:raise ValueError('圣遗物暴击率下限必须在0–200之间')
         if not 0<=self.energy_floor<=300:raise ValueError('圣遗物额外充能下限必须在0–300之间')
         self.buckets = {}
         mature = [a for a in pool if a.level == 20 and profile.allows(a)]
@@ -168,10 +194,10 @@ class CappedInventory:
                 for target_only in (True, False):
                     self.buckets[bound, slot, target_only] = pareto(
                         (Point(getattr(data[a.id][0], bound), getattr(data[a.id][1], bound), (a.id,), main_crit(a),getattr(energy_bounds(a),bound) if self.energy_floor else F(0))
-                         for a in mature if a.slot == slot and (not target_only or a.set_key == profile.data["set_key"])), self.cap,self.energy_floor)
+                         for a in mature if a.slot == slot and (not target_only or a.set_key == profile.data["set_key"])), self.cap,self.energy_floor,self.crit_floor)
         self.cache = {}
-        self.full_lo = tuple(p for p in self.frontier(None, "lo") if p.energy>=self.energy_floor)
-        self.full_hi = tuple(p for p in self.frontier(None, "hi") if p.energy>=self.energy_floor)
+        self.full_lo = tuple(p for p in self.frontier(None, "lo") if p.energy>=self.energy_floor and p.crit+p.main_crit>=self.crit_floor)
+        self.full_hi = tuple(p for p in self.frontier(None, "hi") if p.energy>=self.energy_floor and p.crit+p.main_crit>=self.crit_floor)
         self.baseline = (Bounds(max(self.score(p) for p in self.full_lo), max(self.score(p) for p in self.full_hi))
                          if self.full_lo and self.full_hi else None)
         self.best_ids = max(self.full_lo, key=self.score).ids if self.full_lo else ()
@@ -194,16 +220,16 @@ class CappedInventory:
                     continue
                 bucket = self.buckets[bound, slot, slot != off]
                 states = pareto((Point(a.crit + b.crit, a.other + b.other, a.ids + b.ids, a.main_crit + b.main_crit,a.energy+b.energy)
-                                 for a in states for b in bucket), self.cap,self.energy_floor)
+                                 for a in states for b in bucket), self.cap,self.energy_floor,self.crit_floor)
                 if not states:
                     break
             choices.extend(states)
-        result = pareto(choices, self.cap,self.energy_floor)
+        result = pareto(choices, self.cap,self.energy_floor,self.crit_floor)
         self.cache[key] = result
         return result
 
     def complement(self, candidate, bound):
-        return Envelope(self.frontier(candidate, bound), self.cap, self.w,self.energy_floor)
+        return Envelope(self.frontier(candidate, bound), self.cap, self.w,self.energy_floor,self.crit_floor)
 
 
 @lru_cache(maxsize=256)
@@ -282,7 +308,8 @@ def evaluate_capped(candidate, pool, profile, prepared=None):
     best_hit=max(profile.weight(k)*max(ROLLS[k])/MEANS[k] for k in keys)
     er=energy_bounds(candidate,terminal=True) if prepared.energy_floor else Bounds(F(0),F(0))
     max_er=rolls*max(ROLLS['enerRech_']) if 'enerRech_' in keys else F(0)
-    optimistic=high.query(crit.hi,main_crit(candidate,terminal=True),er.hi+max_er)
+    max_cr=rolls*max(ROLLS['critRate_']) if prepared.crit_floor and 'critRate_' in keys else F(0)
+    optimistic=high.query(crit.hi+max_cr,main_crit(candidate,terminal=True),er.hi+max_er)
     pruned=optimistic is None or other.hi+optimistic+rolls*best_hit<=prepared.baseline.lo
     if pruned:
         p_lo=p_hi=F(0)
@@ -304,6 +331,7 @@ def evaluate_capped(candidate, pool, profile, prepared=None):
             "next_checkpoint": min(20, (candidate.level // 4 + 1) * 4), "random_rolls_left": rolls,
             "probability_lower": float(p_lo), "probability_upper": float(p_hi),
             "probability_fraction_lower": str(p_lo), "artifact_crit_rate_cap": float(prepared.cap),
+            "artifact_crit_rate_min":float(prepared.crit_floor),
             "baseline": [float(prepared.baseline.lo), float(prepared.baseline.hi)],
             "candidate_crit_rate": [float(crit.lo), float(crit.hi)],
             "candidate_other_score": [float(other.lo), float(other.hi)],"pruned_by_upper_bound":pruned}

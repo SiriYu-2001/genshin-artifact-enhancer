@@ -62,7 +62,8 @@ try:
     mona={'flower':[{'setName':'gladiatorFinale','position':'flower','star':5,'level':20,'mainTag':{'name':'lifeStatic','value':4780},
                     'normalTags':[{'name':k,'value':v} for k,v in [('critical',.187),('recharge',.052),('elementalMastery',19),('defendStatic',19)]],'equip':None,'omit':False}]}
     assert api('/api/inventory/import',{'action':'preview','filename':'synthetic-mona.json','content':json.dumps(mona)})['can_import']
-    profile.update(name='临时包自检',artifact_energy_recharge_min=0)
+    profile.update(name='临时包自检',artifact_energy_recharge_min=25,artifact_crit_rate_min=80,artifact_crit_rate_cap=47)
+    profile['weights']['enerRech_']=0
     config={'name':'临时包自检','mode':'single','equipment':'borrow','allocation':'priority','demands':[{'id':'smoke','profile':profile}]}
     saved=api('/api/config',{'config':config});assert api('/api/config/'+saved['id'])['name']=='临时包自检'
     job=api('/api/jobs',{'kind':'preview','config_id':saved['id'],'snapshot_id':imported['snapshot_id']})['id']
@@ -71,6 +72,9 @@ try:
         if state['job'] and state['job']['id']==job and state['job']['status']!='running':break
         time.sleep(.25)
     assert state['job']['id']==job and state['job']['status']=='completed',state['job']['status']
+    row=state['job']['result']['demands'][0]
+    assert row['artifact_crit_rate_min']==80 and row['artifact_crit_rate_total']>=80
+    assert row['artifact_energy_recharge_min']==25 and row['artifact_energy_recharge_total']>=25
     native_env=dict(env,ORT_DYLIB_PATH=str(app/'bin/onnxruntime.dll'))
     # Embedded models must load from the archive, with no user caches or Python on PATH.
     image=folder/'synthetic.png';Image.new('RGB',(320,48),'black').save(image)
@@ -93,7 +97,7 @@ try:
     proof={'status':'passed','version':version,'archive_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),
            'manifest_requires_administrator':True,'ui_test_privilege':'standard-user read-only compatibility mode',
            'frozen_ui':True,'initial_inventory_empty':True,'config_saved_and_read':True,'good_import':True,'mona_import_preview':True,
-           'allocation_preview_worker':True,'bundled_ocr_replay':True,'python_on_path':False,'agent_environment':False,
+           'allocation_preview_worker':True,'crit_and_energy_minimum_constraints':True,'crit_floor_above_scoring_cap':True,'bundled_ocr_replay':True,'python_on_path':False,'agent_environment':False,
            'external_dependency_downloads':False,'python_external_network_blocked':True,'empty_user_cache':True,'stale_config_recovered':True,'stop_then_new_job':True,'game_input':False,'live_game_acceptance':False}
     (out/'isolated-smoke-check.json').write_text(json.dumps(proof,indent=2),encoding='utf-8')
     (folder/'check.json').write_text(json.dumps(proof,indent=2),encoding='utf-8')

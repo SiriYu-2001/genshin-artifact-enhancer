@@ -51,10 +51,11 @@ def plan(pool,profile,names=None,*,samples=1024,max_nodes=15000,time_limit=6,com
     if not any(a.level<20 for a in candidates):return None
     configured_cap=profile.data.get('artifact_crit_rate_cap')
     weight=float(profile.weight('critRate_')/MEANS['critRate_']);cap=float(configured_cap if configured_cap is not None else 100000);floor=float(profile.data.get('artifact_energy_recharge_min',0))
+    crit_floor=float(profile.data.get('artifact_crit_rate_min',0))
     linear={a.id:draws[a.id][:,1]+weight*draws[a.id][:,0] for a in candidates}
     best=None;best_value=-1.;nodes=0;limited=False;start=time.monotonic()
     def evaluate(rows,main):
-        feasible=rows[:,2]>=floor-1e-10
+        feasible=(rows[:,2]>=floor-1e-10)&(rows[:,0]+main>=crit_floor-1e-10)
         scores=rows[:,1]+weight*np.minimum(rows[:,0],max(0,cap-main))
         return np.where(feasible,scores,0.),feasible
     # Largest bucket last makes upper bounds prune earlier. All 4+1 layouts
@@ -66,6 +67,7 @@ def plan(pool,profile,names=None,*,samples=1024,max_nodes=15000,time_limit=6,com
         for b in buckets.values():b.sort(key=lambda a:float(linear[a.id].mean()),reverse=True)
         max_linear=[np.max([linear[a.id] for a in buckets[s]],axis=0) for s in slots]
         max_energy=[np.max([draws[a.id][:,2] for a in buckets[s]],axis=0) for s in slots]
+        max_crit=[np.max([draws[a.id][:,0]+float(main_crit(a,terminal=True)) for a in buckets[s]],axis=0) for s in slots]
         def visit(i,rows,main,chosen):
             nonlocal best,best_value,nodes,limited
             nodes+=1
@@ -76,7 +78,7 @@ def plan(pool,profile,names=None,*,samples=1024,max_nodes=15000,time_limit=6,com
                 if feasible.any() and value>best_value:best_value=value;best=(tuple(chosen),scores,feasible)
                 return
             upper=rows[:,1]+weight*np.minimum(rows[:,0],max(0,cap-main))+sum(max_linear[i:])
-            reachable=rows[:,2]+sum(max_energy[i:])>=floor-1e-10
+            reachable=(rows[:,2]+sum(max_energy[i:])>=floor-1e-10)&(rows[:,0]+main+sum(max_crit[i:])>=crit_floor-1e-10)
             if float(np.where(reachable,upper,0).mean())<=best_value:return
             for a in buckets[slots[i]]:
                 visit(i+1,rows+draws[a.id],main+float(main_crit(a,terminal=True)),chosen+[a])
@@ -90,7 +92,7 @@ def plan(pool,profile,names=None,*,samples=1024,max_nodes=15000,time_limit=6,com
             'expected_score_lower_model':float(scores.mean()),'mc95_halfwidth':float(1.96*scores.std(ddof=1)/np.sqrt(samples)),
             'feasibility_probability_estimate':float(feasible.mean()),'items':[a.id for a in chosen],
             'pending_items':[a.id for a in chosen if a.level<20],'deferred_count':len(deferred),
-            'scope':'按当前观测的保守属性边界模拟升满级；对整套计入暴击封顶，未达到额外充能下限的结果记0分。搜索选择已考察组合中期望分最高者；不保证真实期望全局最优。'}
+            'scope':'按当前观测的保守属性边界模拟升满级；对整套计入暴击封顶，未达到暴击率或额外充能下限的结果记0分。搜索选择已考察组合中期望分最高者；不保证真实期望全局最优。'}
 
 
 def decisions(pool,profile,names,committed=None):

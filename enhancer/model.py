@@ -124,6 +124,7 @@ class Profile:
         if not 0 <= obj.threshold <= 1 or any(F(str(v)) < 0 for v in obj.data["weights"].values()):
             raise ValueError("invalid threshold/weights")
         if not 0<=F(str(obj.data.get('artifact_energy_recharge_min',0)))<=300:raise ValueError('invalid artifact energy recharge minimum')
+        if not 0<=F(str(obj.data.get('artifact_crit_rate_min',0)))<=200:raise ValueError('invalid artifact crit rate minimum')
         return obj
 
     @property
@@ -175,9 +176,9 @@ def best_build(pool, profile, forced=None):
     With forced set, return only the four-item complement. The forced artifact
     does not have to be +20. Duplicate physical pieces retain distinct IDs.
     """
-    if profile.data.get('artifact_energy_recharge_min',0):
+    if profile.data.get('artifact_energy_recharge_min',0) or profile.data.get('artifact_crit_rate_min',0):
         from .capped import CappedInventory
-        if forced is not None:raise ValueError('ER-constrained complements require a candidate-dependent CappedInventory envelope')
+        if forced is not None:raise ValueError('Hard-floor complements require a candidate-dependent CappedInventory envelope')
         return CappedInventory(pool,profile).baseline
     pool = [a for a in pool if a.level == 20 and profile.allows(a)
             and (forced is None or a.id != forced.id)]
@@ -226,7 +227,7 @@ class InventoryEvaluation:
 
 
 def evaluate(candidate, pool, profile, prepared=None):
-    if profile.data.get("artifact_crit_rate_cap") is not None or profile.data.get('artifact_energy_recharge_min',0):
+    if profile.data.get("artifact_crit_rate_cap") is not None or profile.data.get('artifact_energy_recharge_min',0) or profile.data.get('artifact_crit_rate_min',0):
         from .capped import evaluate_capped
         return evaluate_capped(candidate, pool, profile, prepared)
     if not profile.allows(candidate):

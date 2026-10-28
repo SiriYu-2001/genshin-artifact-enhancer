@@ -46,16 +46,16 @@ def seed_for(seed, *parts):
     return int.from_bytes(hashlib.sha256(repr((seed,parts)).encode()).digest()[:8], 'little')
 
 
-def pareto(rows, cap, energy_floor=0):
+def pareto(rows, cap, energy_floor=0, crit_floor=0):
     """Rows=(crit, weighted other substats, main crit). Group by main crit."""
     if energy_floor:
-        points=frontier_pareto((Point(float(r[0]),float(r[1]),(),float(r[2]),float(r[3])) for r in np.asarray(rows).reshape(-1,4)),cap,energy_floor)
+        points=frontier_pareto((Point(float(r[0]),float(r[1]),(),float(r[2]),float(r[3])) for r in np.asarray(rows).reshape(-1,4)),cap,energy_floor,crit_floor)
         return np.array([(p.crit,p.other,p.main_crit,p.energy) for p in points],dtype=float).reshape(-1,4)
     rows = np.asarray(rows,dtype=float).reshape(-1,3)
     if not len(rows): return rows
     result=[]
     for main in np.unique(rows[:,2]):
-        a=rows[rows[:,2]==main].copy(); a[:,0]=np.minimum(a[:,0], max(0.,cap-main))
+        a=rows[rows[:,2]==main].copy(); a[:,0]=np.minimum(a[:,0], max(0.,max(cap,crit_floor)-main))
         order=np.lexsort((-a[:,1],-a[:,0])); a=a[order]
         best=-np.inf
         for row in a:
@@ -66,14 +66,15 @@ def pareto(rows, cap, energy_floor=0):
 
 class Inventory:
     """Small numeric projection of the existing exact-rational inventory DP."""
-    def __init__(self, base, future, cap, weight, energy_floor=0):
+    def __init__(self, base, future, cap, weight, energy_floor=0, crit_floor=0):
         self.cap=cap; self.weight=weight; self.energy_floor=energy_floor; self.dim=4 if energy_floor else 3; self.cache={}; self.buckets={}
+        self.crit_floor=crit_floor
         self.base=base;self.future=future
         for slot in SLOTS:
             for target in (False,True):
                 rows=base[slot,target]
                 extra=future[slot,target]
-                self.buckets[slot,target]=pareto(np.concatenate((rows,extra)),cap,self.energy_floor)
+                self.buckets[slot,target]=pareto(np.concatenate((rows,extra)),cap,self.energy_floor,self.crit_floor)
 
     def frontier(self, slot=None, target=True):
         key=slot,target
@@ -85,10 +86,10 @@ class Inventory:
             for s in SLOTS:
                 if s==slot:continue
                 bucket=self.buckets[s,s!=off]
-                rows=pareto((rows[:,None,:]+bucket[None,:,:]).reshape(-1,self.dim),self.cap,self.energy_floor)
+                rows=pareto((rows[:,None,:]+bucket[None,:,:]).reshape(-1,self.dim),self.cap,self.energy_floor,self.crit_floor)
                 if not len(rows):break
             result.extend(rows)
-        answer=pareto(result,self.cap,self.energy_floor);self.cache[key]=answer
+        answer=pareto(result,self.cap,self.energy_floor,self.crit_floor);self.cache[key]=answer
         return answer
 
     def new_frontier(self):
@@ -102,23 +103,25 @@ class Inventory:
             old=np.zeros((1,self.dim));new=np.empty((0,self.dim))
             for s in SLOTS:
                 k=s,s!=off
-                old_bucket=pareto(self.base[k],self.cap,self.energy_floor)
-                fresh_bucket=pareto(self.future[k],self.cap,self.energy_floor)
+                old_bucket=pareto(self.base[k],self.cap,self.energy_floor,self.crit_floor)
+                fresh_bucket=pareto(self.future[k],self.cap,self.energy_floor,self.crit_floor)
                 via_new=(new[:,None,:]+self.buckets[k][None,:,:]).reshape(-1,self.dim)
                 first_new=(old[:,None,:]+fresh_bucket[None,:,:]).reshape(-1,self.dim)
-                new=pareto(np.concatenate((via_new,first_new)),self.cap,self.energy_floor)
-                old=pareto((old[:,None,:]+old_bucket[None,:,:]).reshape(-1,self.dim),self.cap,self.energy_floor)
+                new=pareto(np.concatenate((via_new,first_new)),self.cap,self.energy_floor,self.crit_floor)
+                old=pareto((old[:,None,:]+old_bucket[None,:,:]).reshape(-1,self.dim),self.cap,self.energy_floor,self.crit_floor)
             result.extend(new)
-        return pareto(result,self.cap,self.energy_floor)
+        return pareto(result,self.cap,self.energy_floor,self.crit_floor)
 
     def score(self, rows):
         if self.energy_floor:rows=rows[rows[:,3]>=self.energy_floor-1e-10]
+        if self.crit_floor:rows=rows[rows[:,0]+rows[:,2]>=self.crit_floor-1e-10]
         if not len(rows):return -np.inf
         return float(np.max(rows[:,1]+self.weight*np.minimum(rows[:,0],np.maximum(0,self.cap-rows[:,2]))))
 
     def candidate(self, slot, target, cr, other, main, energy=0):
         points=self.frontier(slot,target)
         if self.energy_floor:points=points[points[:,3]+energy>=self.energy_floor-1e-10]
+        if self.crit_floor:points=points[points[:,0]+points[:,2]+cr+main>=self.crit_floor-1e-10]
         if not len(points):return -np.inf
         return float(np.max(points[:,1]+other+self.weight*np.minimum(points[:,0]+cr,np.maximum(0,self.cap-points[:,2]-main))))
 
@@ -127,6 +130,7 @@ class Inventory:
         if not len(points) or not len(rows):return -np.inf
         scores=points[:,1,None]+rows[None,:,1]+self.weight*np.minimum(points[:,0,None]+rows[None,:,0],np.maximum(0,self.cap-points[:,2,None]-rows[None,:,2]))
         if self.energy_floor:scores=np.where(points[:,3,None]+rows[None,:,3]>=self.energy_floor-1e-10,scores,-np.inf)
+        if self.crit_floor:scores=np.where(points[:,0,None]+points[:,2,None]+rows[None,:,0]+rows[None,:,2]>=self.crit_floor-1e-10,scores,-np.inf)
         return float(np.max(scores))
 
 
@@ -237,9 +241,10 @@ def calculate(pool,profile,result,options,metadata=None,progress=lambda x:None):
     actions,total_actions=shortlist(result)
     cap=float(profile.data['artifact_crit_rate_cap']);w=float(profile.weight('critRate_')/MEANS['critRate_'])
     energy_floor=float(profile.data.get('artifact_energy_recharge_min',0));dim=4 if energy_floor else 3
+    crit_floor=float(profile.data.get('artifact_crit_rate_min',0))
     bases=[project(pool,profile,b) for b in ('lo','hi')]
     empty={k:np.empty((0,dim)) for k in bases[0]}
-    initial=[Inventory(b,empty,cap,w,energy_floor) for b in bases]
+    initial=[Inventory(b,empty,cap,w,energy_floor,crit_floor) for b in bases]
     baseline=[inv.score(inv.frontier()) for inv in initial]
     if not all(math.isfinite(v) for v in baseline):raise ValueError('长期预测需要完整满级基准')
     days=sorted(set((0,options['days']//2,options['days'])))
@@ -271,7 +276,7 @@ def calculate(pool,profile,result,options,metadata=None,progress=lambda x:None):
                     mask=(slots[:take]==si)&legal[:take]
                     if t:mask &=targets[:take]
                     future[s,t]=points[:take][mask]
-            invs=[Inventory(b,future,cap,w,energy_floor) for b in bases]
+            invs=[Inventory(b,future,cap,w,energy_floor,crit_floor) for b in bases]
             scores=[inv.score(inv.frontier()) for inv in invs]
             if np.any(legal[:take]):
                 forced=[inv.score(inv.new_frontier()) for inv in invs]

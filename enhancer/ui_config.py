@@ -50,6 +50,7 @@ def validate(data):
         for key,value in weights.items():number(value,key,0,100)
         number(p.get('threshold'),'概率阈值',0,1)
         number(p.get('artifact_crit_rate_cap'),'暴击率计分上限',0,200)
+        number(p.setdefault('artifact_crit_rate_min',0),'圣遗物暴击率下限',0,200)
         number(p.setdefault('artifact_energy_recharge_min',0),'圣遗物额外充能下限',0,300)
         if p.get('resource_target_score') is not None:number(p['resource_target_score'],'资源规划目标分数',0,1000)
         aliases=p.get('character_aliases',[])

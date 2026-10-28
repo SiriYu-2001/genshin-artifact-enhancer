@@ -152,7 +152,9 @@ def allocate(inventory, campaign, names,bootstrap_plans=None):
                        'level':a.level,'equipped':a.equipped,'substats':[{'key':s.key,'value':float(s.value)} for s in a.stats]}
                       for a in preview_build],
              'blocked_by_higher_demands':blocked,'effective_profile':profile.data}
-        from .capped import main_energy
+        from .capped import main_energy,main_crit
+        row['artifact_crit_rate_min']=profile.data.get('artifact_crit_rate_min',0)
+        row['artifact_crit_rate_total']=float(sum(main_crit(a)+sum(s.value for s in a.stats if s.key=='critRate_' and not s.pending) for a in build)) if build else None
         row['artifact_energy_recharge_min']=profile.data.get('artifact_energy_recharge_min',0)
         row['artifact_energy_recharge_total']=float(sum(main_energy(a)+sum(s.value for s in a.stats if s.key=='enerRech_' and not s.pending) for a in build)) if build else None
         rows.append(row)

@@ -112,7 +112,7 @@ def report(state,current):
     directory=Path(state['directory'])
     before=read(directory/'allocation-before.json')
     initial={r['id']:r for r in before['demands']}
-    demands=[{k:r[k] for k in ('id','character','name','status','score','independent_score','items','eligible_count','deferred','bootstrap','artifact_energy_recharge_min','artifact_energy_recharge_total') if k in r}
+    demands=[{k:r[k] for k in ('id','character','name','status','score','independent_score','items','eligible_count','deferred','bootstrap','artifact_energy_recharge_min','artifact_energy_recharge_total','artifact_crit_rate_min','artifact_crit_rate_total') if k in r}
              for r in current['demands']]
     for row in demands:
         row['threshold']=next(r['effective_profile']['threshold'] for r in current['demands'] if r['id']==row['id'])

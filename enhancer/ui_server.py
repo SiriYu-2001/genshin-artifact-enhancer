@@ -48,7 +48,7 @@ def public_report(data):
                               'items':[{'name':a.get('name'),'slot':a.get('slot'),'status':a.get('status')} for a in r.get('items',[])]}
                              for r in data['loadouts']]
     if 'demands' in data:
-        result['demands']=[{k:r[k] for k in ('id','name','character','status','score','before','gain','independent_score','items','eligible_count','bootstrap','artifact_energy_recharge_min','artifact_energy_recharge_total') if k in r}
+        result['demands']=[{k:r[k] for k in ('id','name','character','status','score','before','gain','independent_score','items','eligible_count','bootstrap','artifact_energy_recharge_min','artifact_energy_recharge_total','artifact_crit_rate_min','artifact_crit_rate_total') if k in r}
                            | {'deferred_count':len(r.get('deferred',[]))} for r in data['demands']]
     from .review_report import review_items
     result['review_items']=review_items(data)

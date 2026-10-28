@@ -56,7 +56,7 @@ def displayed_score(artifact, profile):
 
 
 def select_build(pool, profile):
-    if profile.data.get("artifact_crit_rate_cap") is not None or profile.data.get("artifact_energy_recharge_min",0):
+    if profile.data.get("artifact_crit_rate_cap") is not None or profile.data.get("artifact_energy_recharge_min",0) or profile.data.get("artifact_crit_rate_min",0):
         from .capped import CappedInventory
         prepared = CappedInventory(pool, profile)
         lookup = {a.id: a for a in pool}
@@ -98,7 +98,7 @@ def create_report(directory, profile, include_candidates=False):
         from .capped import main_crit,main_energy
         total_crit = sum(main_crit(a) + sum(s.value for s in a.stats if s.key == "critRate_" and not s.pending) for a in build)
         total_energy=sum(main_energy(a)+sum(s.value for s in a.stats if s.key=='enerRech_' and not s.pending) for a in build)
-        if profile.data.get("artifact_crit_rate_cap") is not None or profile.data.get("artifact_energy_recharge_min",0):
+        if profile.data.get("artifact_crit_rate_cap") is not None or profile.data.get("artifact_energy_recharge_min",0) or profile.data.get("artifact_crit_rate_min",0):
             from .capped import build_score
             bounds = build_score(scoring, profile)
             shown_score = build_score(scoring, profile, displayed=True)
@@ -123,7 +123,7 @@ def create_report(directory, profile, include_candidates=False):
               "five_star_count": sum(a.rarity == 5 for a in artifacts),
               "profile_candidate_count": sum(a.level < 20 for a in valid)}
     if include_candidates and result["baseline_usable"]:
-        if profile.data.get("artifact_crit_rate_cap") is not None or profile.data.get("artifact_energy_recharge_min",0):
+        if profile.data.get("artifact_crit_rate_cap") is not None or profile.data.get("artifact_energy_recharge_min",0) or profile.data.get("artifact_crit_rate_min",0):
             from .capped import CappedInventory
             prepared = CappedInventory(valid, profile)
         else:

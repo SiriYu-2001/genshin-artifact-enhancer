@@ -73,6 +73,9 @@ def before_from_payload(template,payload):
 
 
 def main(reconcile_only=False):
+    from .job_control import pending_operations
+    if reconcile_only and not pending_operations(ROOT/'runtime'):
+        return {'status':'reconciled','game_consumption':False}
     active=read(ROOT/'runtime/active-run.json',{})
     if not active:raise RuntimeError('没有待执行的强化任务')
     run=Path(active['run_directory']);run.mkdir(parents=True,exist_ok=True)
@@ -89,12 +92,16 @@ def main(reconcile_only=False):
     identity=wire_identity(wire(target))
     duplicates=[a.id for a in pool if a.id!=target_id and a.rarity==5 and len(a.stats)==4 and wire_identity(wire(a))==identity]
     if duplicates:raise RuntimeError('存在属性完全相同的另一件圣遗物，不能确定目标身份；未操作游戏')
-    baseline=CappedInventory(pool,profile);client=ensure_backend()
-    if client.request('GET','/workbench').get('enhancementVersion')!=2:
-        raise RuntimeError('包内 GOODScanner 尚不支持新版强化协议，请使用完整的新发行包')
+    client=None
     pending_path=run/'pending.json'
+    native_pending_path=ROOT/'runtime/goodscanner/enhancement/pending.json'
 
     def call(action,payload=None):
+        nonlocal client
+        if client is None:
+            client=ensure_backend()
+            if client.request('GET','/workbench').get('enhancementVersion')!=2:
+                raise RuntimeError('包内 GOODScanner 尚不支持新版强化协议，请使用完整的新发行包')
         body=payload or {'action':action,'operationId':str(uuid.uuid4()),'artifact':wire(target),'name':names[target_id],'sourceKind':target.special}
         directory=run/'native'/body['operationId']
         try:
@@ -126,8 +133,29 @@ def main(reconcile_only=False):
                  'selection_proof':{'empty_before':True,'rarity_limit':4,'five_star_quick_add_disabled':True,'stage_add_observed':True},
                  'native_receipt':result,'finished':datetime.now().isoformat(),'progress_action':'reevaluate'}
         save(run/f"receipt-{pending['id']}.json",receipt);save(run/'target-state.json',item)
-        pending_path.unlink();target=actual
+        if active.get('inventory_updates_path'):
+            updates=read(active['inventory_updates_path'],{})
+            updates[target_id]=item;save(Path(active['inventory_updates_path']),updates)
+        # A crash can leave the native marker AFTER its successful receipt was
+        # durably written. Only the fully validated, identical operation can
+        # settle that marker; never clear a different or unreadable transaction.
+        native_pending=read(native_pending_path)
+        if native_pending and request_matches(native_pending.get('request'),pending['payload']):
+            save(native_pending_path.with_name(f"settled-{pending['id']}.json"),native_pending)
+            native_pending_path.unlink()
+        pending_path.unlink(missing_ok=True);target=actual
 
+    if not pending_path.exists() and native_pending_path.exists():
+        native_pending=read(native_pending_path,{})
+        payload=native_pending.get('request',{})
+        operation=payload.get('operationId','')
+        try:uuid.UUID(operation)
+        except (ValueError,TypeError,AttributeError):raise RuntimeError('待核对记录缺少有效操作编号；可返回配置重新计算，原记录已保留')
+        committed=read(run/f'receipt-{operation}.json',{})
+        if committed.get('target_id')!=target_id or not request_matches(committed.get('native_receipt',{}).get('request'),payload):
+            raise RuntimeError('未能关联待核对记录与当前目标；可返回配置重新计算，原记录已保留')
+        # Resume the local commit only. There is no new game request here.
+        complete({'id':operation,'payload':payload},committed['native_receipt'])
     if pending_path.exists():
         pending=read(pending_path)
         uuid.UUID(pending['id'])
@@ -139,11 +167,12 @@ def main(reconcile_only=False):
         elif native and native.get('confirmed') is False and request_matches(native.get('request'),pending['payload']):
             pending_path.unlink()  # Authoritative evidence: no confirmation issued.
         else:
-            _,result=call('reconcile');complete(pending,result)
+            body=dict(pending['payload'],action='reconcile',operationId=str(uuid.uuid4()))
+            _,result=call('reconcile',body);complete(pending,result)
     if reconcile_only:
-        from .job_control import pending_operations
         if pending_operations(ROOT/'runtime'):raise RuntimeError('仍有未核对的操作记录；没有继续强化')
         return {'status':'reconciled','level':target.level,'game_consumption':False}
+    baseline=CappedInventory(pool,profile)
     _,opened=call('open')
     if opened.get('sourceVerified') is not True or wire_identity(opened.get('artifact',{}))!=wire_identity(wire(target)):
         raise RuntimeError('未取得完整的目标属性与定制状态核验结果')

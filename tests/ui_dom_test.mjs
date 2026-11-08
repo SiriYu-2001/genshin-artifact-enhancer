@@ -224,5 +224,21 @@ assert.ok(requests.some(r=>r.url==='/api/jobs'&&r.body.kind==='retry-equip'&&r.b
 assert.equal($('retry-equip-borrow').checked,false);
 currentState={...currentState,needs_reconciliation:true};await new Promise(r=>setTimeout(r,1750));
 assert.equal($('retry-equip').disabled,true);assert.equal($('resume').textContent,'核对上次结果');
+// Regression: cancelled batch + unresolved consumption + completed stop.
+// This used to leave only the reconcile button and no direct way to recalculate.
+currentState={...currentState,can_resume:true,can_stop:false,unfinished_batch:false,equipment_recovery:null,job:{...currentState.job,kind:'reconcile'}};
+await new Promise(r=>setTimeout(r,1750));
+assert.equal($('return-config').disabled,false);assert.equal($('stop').disabled,true);
+assert.equal($('reconciliation-notice').hidden,false);assert.ok($('run-detail').textContent.includes('仍待核对'));
+const beforeReturn=requests.length;$('return-config').click();await tick();
+assert.equal(window.location.hash,'#configure');assert.equal(requests.length,beforeReturn);
+assert.equal($('preview').disabled,false);$('preview').click();await tick();await tick();
+assert.equal(requests.filter(r=>r.url==='/api/jobs').at(-1).body.kind,'preview');
+assert.ok(!requests.slice(beforeReturn).some(r=>r.body?.kind==='start'||r.body?.kind==='resume'));
+currentState={...currentState,unfinished_batch:true};await new Promise(r=>setTimeout(r,1750));
+$('return-config').click();await tick();await tick();assert.equal(window.location.hash,'#configure');
+assert.equal(requests.at(-1).url,'/api/stop');assert.equal($('reconciliation-notice').hidden,false);
+currentState={...currentState,busy:true};await new Promise(r=>setTimeout(r,1750));
+assert.equal($('return-config').disabled,true);
 await window.ArtifactWorkbench.flushDraft();window.ArtifactWorkbench.dispose();dom.window.close();
 console.log('DOM checks passed: 112 existing controls, guide navigation, accessible state, CSS parsing, advanced validation, saved settings, recommendation rendering and metadata editing. No game job launched.');

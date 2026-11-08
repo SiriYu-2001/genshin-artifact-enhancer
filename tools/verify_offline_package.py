@@ -88,17 +88,29 @@ try:
     recovered=api('/api/config',{'id':'f'*32,'config':config})
     assert recovered['recovered_missing'] and recovered['id']!='f'*32
     api('/api/stop',{})
+    # Reproduce a stopped task whose consuming result remains unknown. Returning
+    # to computation must work without deleting evidence or starting game input.
+    pending=app/'runtime/run-recovery-fixture/pending.json';pending.parent.mkdir()
+    pending.write_text('{"unresolved":true}',encoding='utf-8')
+    (app/'runtime/active-batch.json').write_text(json.dumps({'status':'cancelled','runs':[str(pending.parent)]}),encoding='utf-8')
+    state=api('/api/state');assert not state['busy'] and state['needs_reconciliation']
+    from urllib.error import HTTPError
+    try:api('/api/jobs',{'kind':'start','config_id':recovered['id'],'snapshot_id':imported['snapshot_id'],'fresh':False})
+    except HTTPError as exc:assert exc.code==400 and '核对' in json.load(exc)['error']
+    else:raise AssertionError('Unconfirmed consumption must block a new enhancement')
     retry=api('/api/jobs',{'kind':'preview','config_id':recovered['id'],'snapshot_id':imported['snapshot_id']})['id']
     for _ in range(240):
         state=api('/api/state')
         if state['job']['id']==retry and state['job']['status']!='running':break
         time.sleep(.25)
     assert state['job']['status']=='completed'
+    assert pending.exists() and state['needs_reconciliation']
     proof={'status':'passed','version':version,'archive_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),
            'manifest_requires_administrator':True,'ui_test_privilege':'standard-user read-only compatibility mode',
            'frozen_ui':True,'initial_inventory_empty':True,'config_saved_and_read':True,'good_import':True,'mona_import_preview':True,
            'allocation_preview_worker':True,'crit_and_energy_minimum_constraints':True,'crit_floor_above_scoring_cap':True,'bundled_ocr_replay':True,'python_on_path':False,'agent_environment':False,
-           'external_dependency_downloads':False,'python_external_network_blocked':True,'empty_user_cache':True,'stale_config_recovered':True,'stop_then_new_job':True,'game_input':False,'live_game_acceptance':False}
+           'external_dependency_downloads':False,'python_external_network_blocked':True,'empty_user_cache':True,'stale_config_recovered':True,'stop_then_new_job':True,
+           'pending_preserved_during_recalculation':True,'pending_blocks_consumption':True,'game_input':False,'live_game_acceptance':False}
     (out/'isolated-smoke-check.json').write_text(json.dumps(proof,indent=2),encoding='utf-8')
     (folder/'check.json').write_text(json.dumps(proof,indent=2),encoding='utf-8')
     print(json.dumps(proof),flush=True)

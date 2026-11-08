@@ -281,9 +281,10 @@ class Backend:
         from .job_control import pending_operations
         from .equipment_recovery import recovery_state
         equipment_recovery=recovery_state(self.runtime)
+        pending=pending_operations(self.runtime)
         return {'equipment_recovery':equipment_recovery,'job':job,'hotkey':self.hotkey.status() if getattr(self,'hotkey',None) else None,'can_resume':active.get('status') in ('stopped','needs-attention','cancelled'),
                 'unfinished_batch':unfinished,'can_stop':bool(self.process and self.process.poll() is None) or self.stop_available,
-                'needs_reconciliation':bool(pending_operations(self.runtime)),
+                'needs_reconciliation':bool(pending),'pending_record_count':len(pending),
                 'controller':session.get('state','stopped'),'busy':self.busy(),'stopping':self.stopping,'stop_error':self.stop_error,
                 'timings':recent(self.runtime/'timings.jsonl')}
 
@@ -324,11 +325,13 @@ class Backend:
                 request['allow_borrow']=payload.get('allow_borrow',False)
                 if type(request['allow_borrow']) is not bool:raise ValueError('本次借用选项必须为布尔值')
             if kind=='resume' and not self.state()['can_resume']:raise ValueError('没有可继续的强化任务')
-            if kind in ('scan','start','equip'):
+            # A read-only inventory scan never clears an enhancement journal.
+            # Keep it available for recalculation while consumption stays blocked.
+            if kind in ('start','resume','equip'):
                 active=read(self.runtime/'active-batch.json',{})
                 from .job_control import pending_operations
                 if pending_operations(self.runtime):raise ValueError('上次强化结果仍待核对。请先点击“核对上次结果”；导入文件和计算配装不受影响。')
-                if kind!='scan' and active.get('status') not in (None,'finished','finished-with-deferred','cancelled'):
+                if kind!='resume' and active.get('status') not in (None,'finished','finished-with-deferred','cancelled'):
                     raise ValueError('还有未完成的强化任务，请先继续该任务')
             identifier=uuid.uuid4().hex;directory=self.directory/'jobs'/identifier;directory.mkdir(parents=True)
             if 'config' in request:

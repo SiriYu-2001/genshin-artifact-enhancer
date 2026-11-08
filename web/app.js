@@ -176,6 +176,7 @@ async function refreshState(){
     if(state.timings?.length)$('timings').innerHTML=`<table><thead><tr><th>读取类型</th><th>次数</th><th>平均</th><th>P90</th></tr></thead><tbody>${state.timings.map(t=>`<tr><td>${esc(t.name)}</td><td>${t.count}</td><td>${t.average_ms} ms</td><td>${t.p90_ms} ms</td></tr>`).join('')}</tbody></table>`;
     $('connection-dot').className='online';$('connection').textContent=busy?'本地任务运行中':'本地服务已连接';
     for(const id of ['scan-only','preview','start','equip-loadouts','elixir-calculate'])$(id).disabled=busy;
+    window.__unfinishedBatch=!!state.unfinished_batch;$('return-config').disabled=busy;$('reconciliation-notice').hidden=!state.needs_reconciliation;
     window.__needsReconciliation=state.needs_reconciliation;$('resume').textContent=state.needs_reconciliation?'核对上次结果':'继续上次进度';$('resume').disabled=busy||!(state.can_resume||state.needs_reconciliation);$('stop').disabled=!(state.can_stop??(busy||state.unfinished_batch));
     $('equipment-recovery').hidden=!state.equipment_recovery;$('retry-equip').disabled=busy||!!state.needs_reconciliation||!!state.unfinished_batch;$('retry-equip-borrow').disabled=busy;
     if(state.equipment_recovery)$('equipment-recovery-detail').textContent=(state.equipment_recovery.characters||[]).join('、')+'。'+state.equipment_recovery.hint;
@@ -194,6 +195,7 @@ async function refreshState(){
     if(state.stopping)$('run-detail').textContent='正在确认工作进程和游戏后台退出。完成后可以导入库存或开始新任务。';
     else if(state.stop_error)$('run-detail').textContent='停止未完成：'+state.stop_error;
     else if(job.status==='stopped')$('run-detail').textContent=state.equipment_recovery?'强化进度已保留，可使用下方入口恢复穿戴。':state.can_resume?'已停止，可以继续上次强化或开始其他任务。':job.kind==='scan'?'已停止。扫描不能续扫，请回到“库存导入”重新扫描或导入 JSON。':'本轮已结束，已完成的进度保留；可以开始其他任务。';
+    if(!busy&&!state.stop_error&&state.needs_reconciliation&&['start','resume','reconcile'].includes(job.kind))$('run-detail').textContent='本次任务已停止，上次强化结果仍待核对。可返回配置重新计算，或重新扫描 / 导入库存；自动强化与穿戴暂不可用。';
     $('run-progress').hidden=!busy;$('logs').textContent=job.logs.join('\n')||'等待脚本输出…';
     $('save-loadouts').disabled=busy||!job.result?.demands||!['completed','deferred'].includes(job.status);
     const stamp=JSON.stringify(job.result);if(stamp!==renderStamp){renderStamp=stamp;renderResults(job.kind==='elixir'&&job.result?.kind==='elixir'?{...job.result,calculated_at:job.finished}:job.result);}
@@ -262,6 +264,7 @@ function events(){
   for(const [id,kind] of [['check-backend','backend-check'],['preview','preview'],['start','start'],['resume','resume'],['equip-loadouts','equip']])$(id).onclick=protect(()=>launch(kind));
   $('emergency-stop').onclick=protect(async()=>{await api('/api/emergency-stop',{});notify('已发出中断请求，正在确认后台退出');await refreshState();});
   $('retry-equip').onclick=protect(()=>launch('retry-equip'));
+  $('return-config').onclick=protect(async()=>{if(busy)return;if(window.__unfinishedBatch){await api('/api/stop',{});await refreshState();if(busy)return;}showPage('configure');notify(window.__needsReconciliation?'可以编辑配置并只计算配装；待核对记录仍保留':'可以调整配置并重新计算；已完成的进度保留');});
   $('resume').onclick=protect(()=>launch(window.__needsReconciliation?'reconcile':'resume'));$('stop').onclick=protect(async()=>{await api('/api/stop',{});notify('正在结束本轮；已完成的进度会保留');await refreshState();});
   $('save-loadouts').onclick=protect(async()=>{await api('/api/save-loadouts',{});catalog=await api('/api/catalog');renderCatalog();notify('五件配装已保存到本地库');});
   $('download-result').onclick=()=>latestResult&&download(latestResult,'圣遗物配装结果');

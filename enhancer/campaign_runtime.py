@@ -112,10 +112,9 @@ def report(state,current):
     directory=Path(state['directory'])
     before=read(directory/'allocation-before.json')
     initial={r['id']:r for r in before['demands']}
-    demands=[{k:r[k] for k in ('id','character','name','status','score','independent_score','items','eligible_count','deferred','bootstrap','artifact_energy_recharge_min','artifact_energy_recharge_total','artifact_crit_rate_min','artifact_crit_rate_total') if k in r}
+    demands=[{k:r[k] for k in ('id','character','name','status','score','independent_score','items','threshold','eligible_count','deferred','bootstrap','artifact_energy_recharge_min','artifact_energy_recharge_total','artifact_crit_rate_min','artifact_crit_rate_total') if k in r}
              for r in current['demands']]
     for row in demands:
-        row['threshold']=next(r['effective_profile']['threshold'] for r in current['demands'] if r['id']==row['id'])
         row['before']=initial[row['id']]['score']
         row['gain']=row['score']-row['before'] if row['score'] is not None and row['before'] is not None else None
     result={'kind':'campaign','status':state['status'],'equipment':current['equipment'],'allocation':current['allocation'],
@@ -173,8 +172,9 @@ def run():
         save(profile_path,selected['profile'])
         job={'demand_id':selected['demand_id'],'target_id':candidate['id'],'profile':str(profile_path),
              'ownership':'borrow' if campaign.equipment=='borrow' else 'no-borrow',
-             'run_directory':str(run_dir),'status':'running','probability_lower':candidate['probability_lower']}
+             'run_directory':str(run_dir),'status':'running','probability_lower':candidate['probability_lower'],
+             'threshold':selected['profile']['threshold']}
         state['jobs'].append(job);state['runs'].append(str(run_dir))
         save(manifest,state)
-        print(json.dumps({'phase':'enhancing','demand':job['demand_id'],'character':selected['profile']['character'],'candidate':candidate},ensure_ascii=False),flush=True)
+        print(json.dumps({'phase':'enhancing','demand':job['demand_id'],'character':selected['profile']['character'],'threshold':job['threshold'],'candidate':candidate},ensure_ascii=False),flush=True)
         if not execute_current(state,names):return

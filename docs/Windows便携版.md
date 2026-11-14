@@ -1,6 +1,6 @@
 # Windows 便携版与源码构建
 
-普通用户只下载 Release 的 `ArtifactWorkbench-v0.1.4-windows-x64.zip`，完整解压到有写权限的目录，双击 `ArtifactWorkbench.exe` 并允许 Windows 管理员提示。网页会自动打开。不要只复制 EXE。
+普通用户只下载 Release 的 `ArtifactWorkbench-v1.0.0-windows-x64.zip`，完整解压到有写权限的目录，双击 `ArtifactWorkbench.exe` 并允许 Windows 管理员提示。网页会自动打开。不要只复制 EXE。
 
 Windows 包已包含修改版 GOODScanner、内嵌 OCR 模型、离线游戏映射、ONNX Runtime、Python 和所需运行库；兼容用 yas／霜华文件也随包提供。无需另行下载插件、Python、Node、模型或 Agent，也无需手动启动 GOODScanner GUI。扫描、强化和穿戴统一使用包内 GOODScanner，子进程继承主程序权限。支持 Windows x64、1920×1080、简体中文。
 
@@ -9,6 +9,8 @@ Windows 包已包含修改版 GOODScanner、内嵌 OCR 模型、离线游戏映�
 1. 在“库存导入”选择 GOOD／莫娜 JSON，或进入游戏“背包 → 圣遗物”后扫描。默认扫描当前筛选；扫描全部会清空筛选。
 2. 在“角色与预设”填写主属性、评分、暴击计分封顶及圣遗物额外充能下限。
 3. 先计算配装，再按需强化或穿戴。霜／尘页只提供建议，不消耗资源。
+
+扫描和强化会先确认已进入背包圣遗物网格，换装会先确认角色页。可从大世界、背包、普通角色页进入，已识别的圣遗物详情或替换列表会逐层退出。筛选面板和无法确认的弹窗需手动关闭。核对上次强化时应停在原目标的强化页。
 
 任务开始时程序会尝试聚焦游戏。运行期间请保持游戏前台；失焦会停止输入并提示处理方法。Win 是中断键，不要用它切回游戏。备用快捷键以网页显示为准。程序永不使用五星圣遗物作强化素材。
 

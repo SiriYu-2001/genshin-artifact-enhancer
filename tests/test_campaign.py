@@ -36,6 +36,38 @@ class AllocationTests(unittest.TestCase):
     def campaign(self,equipment='borrow',allocation='priority'):
         return Campaign([Demand(k,profile(k)) for k in 'ABC'],equipment,allocation,None,[])
 
+    def test_each_demand_applies_its_own_configured_threshold(self):
+        from enhancer.campaign import plan
+        from enhancer.ui_config import compile_config
+        from enhancer.ui_server import public_report
+
+        low, high = profile('木偶'), profile('尼可')
+        low.data['threshold'] = .05
+        high.data['threshold'] = .5
+        inventory = [
+            artifact(f'{who}-{slot}', slot, 3, who)
+            for who in ('木偶', '尼可') for slot in SLOTS
+        ]
+        inventory += [
+            artifact('wood-candidate', 'flower', 2, '木偶', level=16),
+            artifact('nicole-candidate', 'flower', 2, '尼可', level=16),
+        ]
+        names = {a.id: a.id for a in inventory}
+        config = {'name':'不同强化阈值', 'mode':'multi', 'equipment':'protected',
+                  'allocation':'priority', 'demands':[{'id':'wood','profile':low.data},
+                                                     {'id':'nicole','profile':high.data}]}
+        with TemporaryDirectory() as temp:
+            compile_config(config, Path(temp))
+            campaign = Campaign.load(Path(temp)/'campaign.json')
+            result = plan(inventory, campaign, names)
+        wood, nicole = result['demands']
+        self.assertEqual([r['decisions'][0]['probability_lower'] for r in (wood,nicole)], [.125,.125])
+        self.assertEqual([r['decisions'][0]['action'] for r in (wood,nicole)], ['enhance','retain'])
+        self.assertEqual(result['next']['demand_id'], 'wood')
+        self.assertEqual(result['next']['profile']['threshold'], .05)
+        self.assertEqual([(r['threshold'],r['eligible_count']) for r in public_report(result)['demands']],
+                         [(.05,1),(.5,0)])
+
     def test_chain_reallocation_is_disjoint_and_releases_previous_claims(self):
         inventory=self.pool(); c=self.campaign(); names={a.id:a.id for a in inventory}
         before=allocate(inventory,c,names)
@@ -173,20 +205,23 @@ class CampaignRuntimeTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             root=Path(tmp);(root/'runtime').mkdir();scan=root/'scan';scan.mkdir()
             c=Campaign([Demand('a',profile('A')),Demand('b',profile('B'))],'borrow','priority',None,[])
+            c.demands[1].profile.data['threshold']=.5
             config=c.snapshot(root/'config')
             original=[artifact('scan:1','flower',1,level=0),artifact('scan:2','plume',1,level=0)]
             names={a.id:'target' for a in original}
             calls=[];observed=[]
-            def plan(pool,*args,**kwargs):
+            def plan(pool,campaign,*args,**kwargs):
                 levels=tuple(a.level for a in pool);observed.append(levels)
                 sequence={(0,0):('a','scan:1'),(4,0):('b','scan:1'),(20,0):('a','scan:2')}
                 chosen=sequence.get(levels)
                 selected=None if chosen is None else {'demand_id':chosen[0],
-                    'candidate':{'id':chosen[1],'probability_lower':.5},'profile':profile(chosen[0].upper()).data}
+                    'candidate':{'id':chosen[1],'probability_lower':.5},
+                    'profile':next(d.profile.data for d in campaign.demands if d.id==chosen[0])}
                 return {'claims':{},'next':selected,'demands':[],'blocked_demands':[]}
             def child(*args,**kwargs):
                 active=runtime.read(root/'runtime/active-run.json')
-                calls.append((Path(active['profile']).parent.name,active['target_id']))
+                calls.append((Path(active['profile']).parent.name,active['target_id'],
+                              Profile.load(active['profile']).threshold))
                 level=4 if len(calls)==1 else 20
                 a=next(a for a in original if a.id==active['target_id'])
                 directory=Path(active['run_directory'])
@@ -212,5 +247,5 @@ class CampaignRuntimeTests(unittest.TestCase):
             state=runtime.read(root/'runtime/active-batch.json')
             self.assertEqual([j['demand_id'] for j in state['jobs']],['a','b','a'])
             self.assertEqual(state['status'],'finished')
-            self.assertEqual(len(calls),3)
+            self.assertEqual([call[2] for call in calls],[F('.05'),F('.5'),F('.05')])
             self.assertEqual(runtime.read(Path(state['directory'])/'inventory-updates.json')['scan:1']['level'],20)

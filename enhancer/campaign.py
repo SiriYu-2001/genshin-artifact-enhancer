@@ -145,7 +145,7 @@ def allocate(inventory, campaign, names,bootstrap_plans=None):
         preview_build=build or ([a for a in inventory if a.id in ids] if bootstrap else [])
         row={'id':demand.id,'character':profile.data['character'],'name':profile.data.get('name',demand.id),
              'status':'ready' if build else 'bootstrap' if bootstrap else 'missing_mature_build',
-             'bootstrap':bootstrap,
+             'bootstrap':bootstrap,'threshold':float(profile.threshold),
              'score':float(build_score(build,profile,displayed=True)) if build else None,
              'independent_score':float(build_score(independent,unreserved,displayed=True)) if independent else None,
              'items':[{'id':a.id,'name':names[a.id],'slot':a.slot,'set_key':a.set_key,'main':a.main,

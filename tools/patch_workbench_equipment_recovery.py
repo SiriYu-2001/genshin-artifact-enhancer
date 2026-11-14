@@ -53,4 +53,7 @@ def main():
     p.write_text(s,encoding='utf-8')
 
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    main()
+    import runpy
+    runpy.run_path(str(Path(__file__).with_name('patch_workbench_entry.py')),run_name='__main__')

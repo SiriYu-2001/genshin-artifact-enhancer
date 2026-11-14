@@ -75,6 +75,42 @@ try:
     row=state['job']['result']['demands'][0]
     assert row['artifact_crit_rate_min']==80 and row['artifact_crit_rate_total']>=80
     assert row['artifact_energy_recharge_min']==25 and row['artifact_energy_recharge_total']>=25
+    # Two equivalent candidates isolate the effect of independent thresholds.
+    from copy import deepcopy
+    config_by_demand=deepcopy(config)
+    config_by_demand.update(mode='multi',equipment='protected')
+    config_by_demand['demands']=[]
+    threshold_items=[]
+    for character,threshold in [('木偶',.05),('尼可',.5)]:
+        p=deepcopy(profile)
+        p.update(character=character,character_aliases=[character],threshold=threshold,
+                 artifact_energy_recharge_min=0,artifact_crit_rate_min=0,
+                 weights={'enerRech_':1})
+        config_by_demand['demands'].append({'id':str(len(config_by_demand['demands'])),'profile':p})
+        for item in artifacts:
+            owned=deepcopy(item)
+            owned.update(location=character)
+            owned.pop('totalRolls')
+            owned['substats'][0]['value']=3.1
+            owned['substats'][1]['value']=15.5
+            threshold_items.append(owned)
+        candidate=deepcopy(threshold_items[-5])
+        candidate.update(level=16)
+        candidate['substats'][0]['value']=3.1
+        candidate['substats'][1]['value']=10.4
+        threshold_items.append(candidate)
+    threshold_import=api('/api/inventory/import',{'action':'preview','filename':'synthetic-thresholds.json',
+        'content':json.dumps({'format':'GOOD','version':3,'artifacts':threshold_items})})
+    assert threshold_import['can_import'],threshold_import.get('errors')
+    threshold_snapshot=api('/api/inventory/import',{'action':'commit','preview':threshold_import['preview']})['snapshot_id']
+    threshold_config=api('/api/config',{'config':config_by_demand})['id']
+    threshold_job=api('/api/jobs',{'kind':'preview','config_id':threshold_config,'snapshot_id':threshold_snapshot})['id']
+    for _ in range(240):
+        state=api('/api/state')
+        if state['job']['id']==threshold_job and not state['busy']:break
+        time.sleep(.25)
+    assert state['job']['id']==threshold_job and state['job']['status']=='completed'
+    assert [(r['threshold'],r['eligible_count']) for r in state['job']['result']['demands']]==[(.05,1),(.5,0)]
     native_env=dict(env,ORT_DYLIB_PATH=str(app/'bin/onnxruntime.dll'))
     # Embedded models must load from the archive, with no user caches or Python on PATH.
     image=folder/'synthetic.png';Image.new('RGB',(320,48),'black').save(image)
@@ -108,7 +144,7 @@ try:
     proof={'status':'passed','version':version,'archive_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),
            'manifest_requires_administrator':True,'ui_test_privilege':'standard-user read-only compatibility mode',
            'frozen_ui':True,'initial_inventory_empty':True,'config_saved_and_read':True,'good_import':True,'mona_import_preview':True,
-           'allocation_preview_worker':True,'crit_and_energy_minimum_constraints':True,'crit_floor_above_scoring_cap':True,'bundled_ocr_replay':True,'python_on_path':False,'agent_environment':False,
+           'allocation_preview_worker':True,'per_demand_thresholds':True,'crit_and_energy_minimum_constraints':True,'crit_floor_above_scoring_cap':True,'bundled_ocr_replay':True,'python_on_path':False,'agent_environment':False,
            'external_dependency_downloads':False,'python_external_network_blocked':True,'empty_user_cache':True,'stale_config_recovered':True,'stop_then_new_job':True,
            'pending_preserved_during_recalculation':True,'pending_blocks_consumption':True,'game_input':False,'live_game_acceptance':False}
     (out/'isolated-smoke-check.json').write_text(json.dumps(proof,indent=2),encoding='utf-8')

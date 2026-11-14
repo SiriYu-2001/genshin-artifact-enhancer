@@ -96,7 +96,14 @@ assert.equal(window.ArtifactWorkbench.serialize().demands[0].profile.artifact_cr
 assert.equal(window.ArtifactWorkbench.serialize().demands[0].profile.threshold,.05);
 assert.ok($('crit-cap').closest('label').textContent.includes('不是配装硬限制'));
 $('mode-multi').click();$('add-demand').click();
-input('character','测试角色');input('profile-name','第二套用途');
+input('character','测试角色');input('profile-name','第二套用途');input('threshold','50');
+let cards=document.querySelectorAll('[data-demand]');
+assert.match(cards[0].textContent,/强化 5%/);
+assert.match(cards[1].textContent,/强化 50%/);
+cards[0].click();
+assert.equal($('threshold').value,'5');
+document.querySelectorAll('[data-demand]')[1].click();
+assert.equal($('threshold').value,'50');
 const prior=window.ArtifactWorkbench.getDraft().demands[1].id;
 document.querySelectorAll('[data-move="-1"]')[1].click();
 assert.equal(window.ArtifactWorkbench.getDraft().demands[0].id,prior);
@@ -106,6 +113,7 @@ assert.equal(window.ArtifactWorkbench.serialize().scenarios[0].demands.length,2)
 $('save-config').click();await tick();
 assert.equal(savedConfig.demands.length,2);
 assert.equal(savedConfig.demands[0].profile.character,'测试角色');
+assert.deepEqual(savedConfig.demands.map(d=>d.profile.threshold),[.5,.05]);
 assert.deepEqual(savedConfig.demands[0].profile.character_aliases,['测试角色']);
 $('preview').click();await tick();await tick();
 assert.ok(requests.some(r=>r.url==='/api/jobs'&&r.body.kind==='preview'));
@@ -224,6 +232,12 @@ assert.ok(requests.some(r=>r.url==='/api/jobs'&&r.body.kind==='retry-equip'&&r.b
 assert.equal($('retry-equip-borrow').checked,false);
 currentState={...currentState,needs_reconciliation:true};await new Promise(r=>setTimeout(r,1750));
 assert.equal($('retry-equip').disabled,true);assert.equal($('resume').textContent,'核对上次结果');
+currentState={...currentState,job:{...currentState.job,result:{...currentState.job.result,
+  demands:[{id:'wood',name:'木偶',status:'ready',threshold:.05,items:[]},{id:'nicole',name:'尼可',status:'ready',threshold:.5,items:[]}]}}};
+await new Promise(r=>setTimeout(r,1750));
+const results=$('results').querySelectorAll('article.result-card');
+assert.ok(results[0].textContent.includes('强化阈值 5%'));
+assert.ok(results[1].textContent.includes('强化阈值 50%'));
 // Regression: cancelled batch + unresolved consumption + completed stop.
 // This used to leave only the reconcile button and no direct way to recalculate.
 currentState={...currentState,can_resume:true,can_stop:false,unfinished_batch:false,equipment_recovery:null,job:{...currentState.job,kind:'reconcile'}};

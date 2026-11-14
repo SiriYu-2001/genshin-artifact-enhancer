@@ -39,8 +39,9 @@ def main():
         command+=['--exclude-module',excluded]
     for folder in ('web','layouts','data','profiles','campaigns'):
         command+=['--add-data',str(ROOT/folder)+':'+folder]
-    for name in ('Start-Controller.ps1','Start-ControllerBootstrap.ps1','patch_yas.py','yas_readonly.rs','Build-Yas.ps1','patch_goodscanner.py','workbench_goodscanner.rs','patch_good_enhancement.py','workbench_enhance.rs','patch_workbench_feedback.py','patch_workbench_equip.py','patch_workbench_focus.py','patch_workbench_filtered_scan.py','patch_workbench_grid_evidence.py','patch_workbench_equipment_recovery.py','workbench_equipment_scroll.rs'):
+    for name in ('Start-Controller.ps1','Start-ControllerBootstrap.ps1','patch_yas.py','yas_readonly.rs','Build-Yas.ps1','patch_goodscanner.py','workbench_goodscanner.rs','patch_good_enhancement.py','workbench_enhance.rs','patch_workbench_feedback.py','patch_workbench_equip.py','patch_workbench_focus.py','patch_workbench_filtered_scan.py','patch_workbench_grid_evidence.py','patch_workbench_equipment_recovery.py','workbench_equipment_scroll.rs','patch_workbench_entry.py','workbench_entry.rs'):
         command+=['--add-data',str(ROOT/'tools'/name)+':tools']
+    command+=['--add-data',str(ROOT/'tools/workbench-entry-assets')+':tools/workbench-entry-assets']
     for name in ('yas_artifact.exe','yas_readonly.exe'):
         command+=['--add-binary',str(args.yas_bin_dir/name)+':vendor/yas/target/release']
     command+=['--add-binary',str(ort)+':bin','--add-binary',str(args.frostflake)+':bin',
@@ -78,7 +79,7 @@ def main():
         if (ROOT/name).exists():shutil.copy2(ROOT/name,app/name)
     if (ROOT/'licenses').exists():shutil.copytree(ROOT/'licenses',licenses/'upstream')
     (licenses/'SOURCES.txt').write_text('Project and matching yas source archive:\nhttps://github.com/SiriYu-2001/genshin-artifact-enhancer/releases\nyas upstream: https://github.com/1803233552/yas\nCommit: 614245fde088667216b80ff2133a7a44ebeb4d1f\nModified yas source and dependencies are provided as a separate Release asset.\nFrostflake is bundled unmodified; upstream: https://github.com/YuehaiTeam/frostflake\nSee THIRD_PARTY_NOTICES.md.\n',encoding='utf-8')
-    (app/'开始使用.txt').write_text('圣遗物工坊 · Windows 便携预览版\n\n完整解压后双击 ArtifactWorkbench.exe，自动打开本地网页。不需要安装 Python 或 Agent。不要只复制 EXE。\n配置与扫描数据存入同目录 runtime，请备份整个 runtime。请放在有写权限的文件夹。\n已包含 GOODScanner 后台、模型与 ONNX Runtime（旧兼容文件不参与新执行流程），不需要额外下载安装。\n扫描、换装、逐阶段强化统一使用 GOODScanner。无需手动开启任何插件。\n双击 ArtifactWorkbench.exe 时 Windows 会请求管理员授权；允许后进入工坊。\n游戏适配：1920×1080、简体中文，从背包圣遗物界面开始。点击扫描后由程序自动切回游戏，不要按 Win 键（这是中断键）。\n永不消耗五星圣遗物作为强化素材。霜/尘只提供建议。\n任务运行时按左/右Win键或网页显示的备用快捷键中断，也可点击紧急中断。\n升级保留 runtime；不要公开上传使用后的整个目录。\n',encoding='utf-8-sig')
+    (app/'开始使用.txt').write_text('圣遗物工坊 · Windows 便携版\n\n完整解压后双击 ArtifactWorkbench.exe，自动打开本地网页。不需要安装 Python 或 Agent。不要只复制 EXE。\n配置与扫描数据存入同目录 runtime，请备份整个 runtime。请放在有写权限的文件夹。\n已包含 GOODScanner 后台、模型与 ONNX Runtime（旧兼容文件不参与新执行流程），不需要额外下载安装。\n扫描、换装、逐阶段强化统一使用 GOODScanner。无需手动开启任何插件。\n双击 ArtifactWorkbench.exe 时 Windows 会请求管理员授权；允许后进入工坊。\n游戏适配：1920×1080、简体中文。可从大世界、背包或普通角色页启动，开始前请关闭游戏弹窗。点击扫描后由程序自动切回游戏，不要按 Win 键（这是中断键）。\n永不消耗五星圣遗物作为强化素材。霜/尘只提供建议。\n任务运行时按左/右Win键或网页显示的备用快捷键中断，也可点击紧急中断。\n升级保留 runtime；不要公开上传使用后的整个目录。\n',encoding='utf-8-sig')
     files=[p for p in app.rglob('*') if p.is_file()]
     assert not (app/'runtime').exists()
     manifest={'release':args.version,'build':datetime.now().isoformat(),'python':sys.version,'pyinstaller':metadata.version('PyInstaller'),

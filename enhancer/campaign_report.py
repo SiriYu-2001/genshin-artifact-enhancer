@@ -17,11 +17,13 @@ def write_report(result,path):
            ('离线计算；没有扫描或操作游戏，没有执行强化或换装。' if preview else
             f"状态：{result['status']}；仅计算配装，没有自动换装。"),
            f"装备策略：{result['equipment']}；分配策略：{result['allocation']}。",'',
-           '| 需求（优先级从高到低） | 当前分数 | 忽略需求间冲突时 | 本轮提升 | 达标候选 |',
-           '|---|---:|---:|---:|---:|']
+           '| 需求（优先级从高到低） | 当前分数 | 忽略需求间冲突时 | 本轮提升 | 强化阈值 | 达标候选 |',
+           '|---|---:|---:|---:|---:|---:|']
     for row in result['demands']:
         scores=[f'{row[k]:.4f}' if row.get(k) is not None else '—' for k in ('score','independent_score','gain')]
-        lines.append(f"| {cell(row['name'])} ({row['id']}) | {' | '.join(scores)} | {row.get('eligible_count','—')} |")
+        threshold=row.get('threshold')
+        shown_threshold=f'{threshold*100:g}%' if threshold is not None else '—'
+        lines.append(f"| {cell(row['name'])} ({row['id']}) | {' | '.join(scores)} | {shown_threshold} | {row.get('eligible_count','—')} |")
     lines+=['','priority 为按优先级依次分配的贪心结果，不保证全局联合最优。independent 允许需求之间争用装备，不是可同时穿戴的保证。',
             '不同角色的评分体系可不同，分数不直接相加。缺少满级基准时先搜索可培养的起始套装；形成真实基准后再启用序贯替换阈值。',
             f"同时使用冲突：{len(result['conflicts'])}；未配齐：{len(result.get('blocked_demands',[]))}。"]
